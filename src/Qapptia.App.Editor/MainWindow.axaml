@@ -55,10 +55,10 @@
                 </Panel>
             </ScrollViewer>
 
-            <!-- Toast Overlay (Top Left of Canvas) -->
-            <shared:ToastWidget Grid.Column="0"
-                                HorizontalAlignment="Left" VerticalAlignment="Top"
-                                Margin="16,16,0,0"
+            <!-- Toast Overlay -->
+            <shared:ToastWidget Grid.Column="0" Grid.ColumnSpan="3"
+                                HorizontalAlignment="{Binding ToastAlignment}" VerticalAlignment="Top"
+                                Margin="16,16,16,0"
                                 ZIndex="999"
                                 Message="{Binding ToastMessage}"
                                 Type="{Binding ToastType}"

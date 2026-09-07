@@ -20,4 +20,12 @@ public static class Constants
     public const string ToastOpenFileError = "No se pudo abrir el archivo con la aplicación del sistema.";
     public const string ToastFolderNotFound = "La ubicación del archivo no existe.";
     public const string ToastShowInFolderError = "No se pudo abrir el explorador de archivos.";
+    public const string ToastCaptureActive = "El capturador está activo en segundo plano";
+    public const string ToastCaptureLaunching = "Iniciando capturador en segundo plano...";
+    public const string ToastCaptureNotFound = "No se encontró la aplicación de captura.";
+    public const string ToastCaptureError = "Error al iniciar el capturador.";
+
+    // ToolTips de estado del Capturador
+    public const string ToolTipCaptureActive = "Capturador activo en segundo plano";
+    public const string ToolTipCaptureInactive = "Capturador inactivo (clic para iniciar)";
 }

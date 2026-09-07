@@ -150,6 +150,9 @@ public sealed class Program
             return new EditorStateService(savePath, Qapptia.Core.Constants.EditorStateFileName, logger);
         });
 
+        services.AddSingleton<ICaptureAppService>(sp =>
+            new Qapptia.App.Editor.Services.CaptureAppService(sp.GetRequiredService<Serilog.ILogger>()));
+
         // ViewModel y Vistas
         services.AddTransient<EditorViewModel>(sp =>
         {
@@ -165,7 +168,8 @@ public sealed class Program
                 sp.GetService<IClipboardService>(),
                 sp.GetRequiredService<INavigationService>(),
                 sp.GetRequiredService<ICanvasStateService>(),
-                sp.GetRequiredService<IShellService>());
+                sp.GetRequiredService<IShellService>(),
+                sp.GetRequiredService<ICaptureAppService>());
         });
 
         return services.BuildServiceProvider();

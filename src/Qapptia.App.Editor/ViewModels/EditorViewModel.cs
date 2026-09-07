@@ -6,6 +6,7 @@ using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 using Avalonia;
+using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
 using Avalonia.Threading;
@@ -27,13 +28,32 @@ namespace Qapptia.App.Editor.ViewModels;
 
 public partial class EditorViewModel : ObservableObject, IDisposable
 {
+    private static readonly IBrush s_captureActiveBrush = new SolidColorBrush(Color.Parse("#4CAF50"));
+    private static readonly IBrush s_captureInactiveBrush = new SolidColorBrush(Color.Parse("#E53935"));
+
     private readonly IClipboardService? _clipboardService;
+    private readonly ICaptureAppService _captureAppService;
     private CancellationTokenSource? _toastCts;
 
     public SidebarViewModel Sidebar { get; }
     public ToolbarViewModel Toolbar { get; }
     public CanvasViewportViewModel Viewport { get; }
     public CanvasBoardViewModel Board { get; }
+
+    // --- Estado del Capturador en segundo plano ---
+    [ObservableProperty]
+    private bool _isCaptureActive;
+
+    public IBrush CaptureStatusBorderBrush => IsCaptureActive ? s_captureActiveBrush : s_captureInactiveBrush;
+    public IBrush CaptureStatusBackgroundBrush => IsCaptureActive ? s_captureActiveBrush : s_captureInactiveBrush;
+    public string CaptureStatusToolTip => IsCaptureActive ? Constants.ToolTipCaptureActive : Constants.ToolTipCaptureInactive;
+
+    partial void OnIsCaptureActiveChanged(bool value)
+    {
+        OnPropertyChanged(nameof(CaptureStatusBorderBrush));
+        OnPropertyChanged(nameof(CaptureStatusBackgroundBrush));
+        OnPropertyChanged(nameof(CaptureStatusToolTip));
+    }
 
     // --- Notificaciones Toast ---
     [ObservableProperty]
@@ -45,6 +65,9 @@ public partial class EditorViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     private ToastNotificationType _toastType = ToastNotificationType.Success;
 
+    [ObservableProperty]
+    private HorizontalAlignment _toastAlignment = HorizontalAlignment.Left;
+
     // --- Eventos Globales ---
     public event EventHandler? SaveRequested;
     public event EventHandler? CopyRequested;
@@ -54,6 +77,8 @@ public partial class EditorViewModel : ObservableObject, IDisposable
     public event EventHandler? RequestRedraw;
     public event EventHandler? TextInputFocusRequested;
 
+    private readonly Action<Action> _dispatcher;
+
     public EditorViewModel(
         IEditorStateService stateService,
         string savePath,
@@ -61,13 +86,38 @@ public partial class EditorViewModel : ObservableObject, IDisposable
         IClipboardService? clipboardService = null,
         INavigationService? navigationService = null,
         ICanvasStateService? canvasStateService = null,
-        IShellService? shellService = null)
+        IShellService? shellService = null,
+        ICaptureAppService? captureAppService = null,
+        Action<Action>? uiDispatcher = null)
     {
         _clipboardService = clipboardService;
+        _dispatcher = uiDispatcher ?? (action =>
+        {
+            try
+            {
+                if (Dispatcher.UIThread.CheckAccess())
+                {
+                    action();
+                }
+                else
+                {
+                    Dispatcher.UIThread.Post(action);
+                }
+            }
+            catch
+            {
+                action();
+            }
+        });
 
         var navService = navigationService ?? new NavigationService(Log.Logger.ForContext<NavigationService>());
         var canvasService = canvasStateService ?? new CanvasStateService(Log.Logger.ForContext<CanvasStateService>());
         var shell = shellService ?? NullShellService.Instance;
+
+        _captureAppService = captureAppService ?? NullCaptureAppService.Instance;
+        _isCaptureActive = _captureAppService.IsRunning;
+        _captureAppService.StatusChanged += OnCaptureStatusChanged;
+        _captureAppService.StartMonitoring(TimeSpan.FromSeconds(2.5));
 
         Sidebar = new SidebarViewModel(navService, stateService, savePath, shell);
         Toolbar = new ToolbarViewModel(stateService);
@@ -332,9 +382,44 @@ public partial class EditorViewModel : ObservableObject, IDisposable
         }
     }
 
-    public void ShowToast(string message, NotificationType type)
+    private void OnCaptureStatusChanged(object? sender, bool isRunning)
+    {
+        _dispatcher(() =>
+        {
+            IsCaptureActive = isRunning;
+        });
+    }
+
+    [RelayCommand]
+    public async Task LaunchOrWakeCaptureAsync()
+    {
+        if (IsCaptureActive)
+        {
+            bool isStillActive = await _captureAppService.CheckStatusAsync();
+            if (isStillActive)
+            {
+                ShowToast(Constants.ToastCaptureActive, NotificationType.Info, HorizontalAlignment.Right);
+            }
+            else
+            {
+                ShowToast(Constants.ToastCaptureError, NotificationType.Warning, HorizontalAlignment.Right);
+            }
+        }
+        else
+        {
+            ShowToast(Constants.ToastCaptureLaunching, NotificationType.Info, HorizontalAlignment.Right);
+            bool launched = await _captureAppService.LaunchOrWakeAsync();
+            if (!launched)
+            {
+                ShowToast(Constants.ToastCaptureNotFound, NotificationType.Error, HorizontalAlignment.Right);
+            }
+        }
+    }
+
+    public void ShowToast(string message, NotificationType type, HorizontalAlignment alignment = HorizontalAlignment.Left)
     {
         Serilog.Log.Information("Confirmación visual Toast: {Message} ({Type})", message, type);
+        ToastAlignment = alignment;
         ToastMessage = message;
         ToastType = type switch
         {
@@ -355,7 +440,7 @@ public partial class EditorViewModel : ObservableObject, IDisposable
         {
             if (!t.IsCanceled)
             {
-                Dispatcher.UIThread.InvokeAsync(() =>
+                _dispatcher(() =>
                 {
                     IsToastVisible = false;
                 });
@@ -365,6 +450,8 @@ public partial class EditorViewModel : ObservableObject, IDisposable
 
     public void Dispose()
     {
+        _captureAppService.StatusChanged -= OnCaptureStatusChanged;
+        _captureAppService.Dispose();
         Board.Dispose();
         Sidebar.Dispose();
         _toastCts?.Dispose();

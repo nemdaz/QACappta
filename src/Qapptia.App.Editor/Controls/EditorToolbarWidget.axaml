@@ -125,12 +125,31 @@
             </Border>
             </StackPanel>
 
-            <!-- Right aligned settings -->
-            <Border Grid.Column="1" Background="{DynamicResource M3SurfaceVariantBrush}" CornerRadius="6" Padding="2" VerticalAlignment="Center">
-                <Button Command="{Binding OpenConfigCommand}" ToolTip.Tip="Configuración" Background="Transparent" Padding="4">
-                    <PathIcon Data="{StaticResource IconConfig}" Width="16" Height="16" />
-                </Button>
-            </Border>
+            <!-- Right aligned actions (Capture status & settings) -->
+            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                <!-- Estado del Capturador en segundo plano (Fondo Verde/Rojo compacto) -->
+                <Border Background="{DynamicResource M3SurfaceVariantBrush}" CornerRadius="6" Padding="2">
+                    <Button Command="{Binding LaunchOrWakeCaptureCommand}"
+                            ToolTip.Tip="{Binding CaptureStatusToolTip}"
+                            Background="Transparent"
+                            Padding="2">
+                        <Border Background="{Binding CaptureStatusBackgroundBrush}"
+                                CornerRadius="4"
+                                Padding="2"
+                                HorizontalAlignment="Center"
+                                VerticalAlignment="Center">
+                            <Image Source="avares://Qapptia.App.Editor/Assets/tray_icon.png" Width="16" Height="16" />
+                        </Border>
+                    </Button>
+                </Border>
+
+                <!-- Configuración -->
+                <Border Background="{DynamicResource M3SurfaceVariantBrush}" CornerRadius="6" Padding="2">
+                    <Button Command="{Binding OpenConfigCommand}" ToolTip.Tip="Configuración" Background="Transparent" Padding="4">
+                        <PathIcon Data="{StaticResource IconConfig}" Width="16" Height="16" />
+                    </Button>
+                </Border>
+            </StackPanel>
         </Grid>
     </Border>
 
