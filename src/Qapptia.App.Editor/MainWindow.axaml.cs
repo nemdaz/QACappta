@@ -258,4 +258,15 @@ public partial class MainWindow : Window
             }
         });
     }
+
+    private void FileItem_PointerPressed(object? sender, Avalonia.Input.PointerPressedEventArgs e)
+    {
+        if (e.GetCurrentPoint(this).Properties.IsRightButtonPressed && sender is Avalonia.Controls.Control { DataContext: FileItem fileItem })
+        {
+            if (DataContext is EditorViewModel vm && vm.SelectedNode != fileItem)
+            {
+                vm.SelectedNode = fileItem;
+            }
+        }
+    }
 }

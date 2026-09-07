@@ -113,11 +113,23 @@
                                 </StackPanel>
                             </TreeDataTemplate>
                             <DataTemplate DataType="nav:FileItem">
-                                <StackPanel Orientation="Horizontal" Spacing="6" Background="Transparent" Margin="2,0,0,0">
-                                    <!-- Imagen -->
-                                    <PathIcon Data="{StaticResource IconImage}" Width="14" Height="14" Foreground="{DynamicResource M3OnSurfaceVariantBrush}"/>
-                                    <TextBlock Text="{Binding Name}" Foreground="{DynamicResource M3OnSurfaceBrush}" FontSize="13" Padding="0,2" VerticalAlignment="Center" />
-                                </StackPanel>
+                                <Border Background="Transparent" PointerPressed="FileItem_PointerPressed">
+                                    <Border.ContextMenu>
+                                        <ContextMenu>
+                                            <MenuItem Header="Abrir"
+                                                      Command="{Binding $parent[Window].((vm:EditorViewModel)DataContext).OpenFileCommand}"
+                                                      CommandParameter="{Binding}" />
+                                            <MenuItem Header="Mostrar en carpeta"
+                                                      Command="{Binding $parent[Window].((vm:EditorViewModel)DataContext).ShowInFolderCommand}"
+                                                      CommandParameter="{Binding}" />
+                                        </ContextMenu>
+                                    </Border.ContextMenu>
+                                    <StackPanel Orientation="Horizontal" Spacing="6" Background="Transparent" Margin="2,0,0,0">
+                                        <!-- Imagen -->
+                                        <PathIcon Data="{StaticResource IconImage}" Width="14" Height="14" Foreground="{DynamicResource M3OnSurfaceVariantBrush}"/>
+                                        <TextBlock Text="{Binding Name}" Foreground="{DynamicResource M3OnSurfaceBrush}" FontSize="13" Padding="0,2" VerticalAlignment="Center" />
+                                    </StackPanel>
+                                </Border>
                             </DataTemplate>
                         </TreeView.DataTemplates>
                     </TreeView>

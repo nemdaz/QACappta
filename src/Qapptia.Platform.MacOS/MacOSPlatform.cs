@@ -1,7 +1,10 @@
+using System.Diagnostics;
+using System.IO;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Qapptia.Core.Abstractions;
 using Qapptia.Core.Capture;
+using Serilog;
 
 namespace Qapptia.Platform.MacOS;
 
@@ -57,6 +60,63 @@ public sealed class MacClipboardService : IClipboardService
     public Task SetFileDropListAsync(string[] filePaths, CancellationToken ct = default) => throw new PlatformNotSupportedException("MacClipboardService: Fase 3.");
 }
 
+public sealed class MacShellService : IShellService
+{
+    private readonly ILogger? _logger;
+
+    public MacShellService(ILogger? logger = null)
+    {
+        _logger = logger?.ForContext<MacShellService>();
+    }
+
+    public bool OpenFile(string filePath)
+    {
+        if (string.IsNullOrWhiteSpace(filePath)) return false;
+        var fullPath = Path.GetFullPath(filePath);
+        if (!File.Exists(fullPath)) return false;
+
+        try
+        {
+            Process.Start(new ProcessStartInfo("open", $"\"{fullPath}\"") { UseShellExecute = false });
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _logger?.Error(ex, "Error al abrir archivo en macOS: {FilePath}", fullPath);
+            return false;
+        }
+    }
+
+    public bool ShowInFolder(string filePath)
+    {
+        if (string.IsNullOrWhiteSpace(filePath)) return false;
+        var fullPath = Path.GetFullPath(filePath);
+
+        try
+        {
+            if (File.Exists(fullPath))
+            {
+                Process.Start(new ProcessStartInfo("open", $"-R \"{fullPath}\"") { UseShellExecute = false });
+                return true;
+            }
+
+            var parentDir = Path.GetDirectoryName(fullPath);
+            if (!string.IsNullOrEmpty(parentDir) && Directory.Exists(parentDir))
+            {
+                Process.Start(new ProcessStartInfo("open", $"\"{parentDir}\"") { UseShellExecute = false });
+                return true;
+            }
+
+            return false;
+        }
+        catch (Exception ex)
+        {
+            _logger?.Error(ex, "Error al mostrar en carpeta en macOS: {FilePath}", fullPath);
+            return false;
+        }
+    }
+}
+
 public static class ServiceCollectionExtensions
 {
     public static IServiceCollection AddMacOSPlatform(this IServiceCollection services)
@@ -70,6 +130,7 @@ public static class ServiceCollectionExtensions
         services.TryAddSingleton<IShutterSoundService, MacShutterSoundService>();
         services.TryAddSingleton<IClipboardService, MacClipboardService>();
         services.TryAddSingleton<ITrayIconService, MacOSTrayIconService>();
+        services.TryAddSingleton<IShellService, MacShellService>();
         return services;
     }
 }

@@ -45,7 +45,17 @@ public partial class App : Application
             var canvasStateServiceLogger = Serilog.Log.Logger.ForContext<Qapptia.Editor.Services.CanvasStateService>();
             var canvasStateService = new Qapptia.Editor.Services.CanvasStateService(canvasStateServiceLogger);
 
-            var vm = new Qapptia.App.Editor.ViewModels.EditorViewModel(stateService, savePath, fontProvider, clipboardService, navigationService, canvasStateService);
+#if WINDOWS
+            var shellService = new Qapptia.Platform.Windows.WindowsShellService(Serilog.Log.Logger);
+#elif MAC
+            var shellService = new Qapptia.Platform.MacOS.MacShellService(Serilog.Log.Logger);
+#elif LINUX
+            var shellService = new Qapptia.Platform.Linux.LinuxShellService(Serilog.Log.Logger);
+#else
+            var shellService = Qapptia.Core.Services.NullShellService.Instance;
+#endif
+
+            var vm = new Qapptia.App.Editor.ViewModels.EditorViewModel(stateService, savePath, fontProvider, clipboardService, navigationService, canvasStateService, shellService);
 
             var mainWindow = new MainWindow();
             mainWindow.InitializeWithViewModel(vm);

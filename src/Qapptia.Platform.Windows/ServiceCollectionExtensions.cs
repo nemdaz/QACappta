@@ -23,6 +23,7 @@ public static class ServiceCollectionExtensions
         services.TryAddSingleton<IShutterSoundService, WindowsShutterSoundService>();
         services.TryAddSingleton<IClipboardService, WindowsClipboardService>();
         services.TryAddSingleton<ITrayIconService, WindowsTrayIconService>();
+        services.TryAddSingleton<IShellService, WindowsShellService>();
         return services;
     }
 }

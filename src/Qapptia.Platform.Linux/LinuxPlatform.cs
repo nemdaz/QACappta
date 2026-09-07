@@ -1,7 +1,10 @@
+using System.Diagnostics;
+using System.IO;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Qapptia.Core.Abstractions;
 using Qapptia.Core.Capture;
+using Serilog;
 
 namespace Qapptia.Platform.Linux;
 
@@ -61,6 +64,57 @@ public sealed class LinuxClipboardService : IClipboardService
     public Task SetFileDropListAsync(string[] filePaths, CancellationToken ct = default) => throw new PlatformNotSupportedException("LinuxClipboardService: Fase 3.");
 }
 
+public sealed class LinuxShellService : IShellService
+{
+    private readonly ILogger? _logger;
+
+    public LinuxShellService(ILogger? logger = null)
+    {
+        _logger = logger?.ForContext<LinuxShellService>();
+    }
+
+    public bool OpenFile(string filePath)
+    {
+        if (string.IsNullOrWhiteSpace(filePath)) return false;
+        var fullPath = Path.GetFullPath(filePath);
+        if (!File.Exists(fullPath)) return false;
+
+        try
+        {
+            Process.Start(new ProcessStartInfo("xdg-open", $"\"{fullPath}\"") { UseShellExecute = false });
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _logger?.Error(ex, "Error al abrir archivo en Linux: {FilePath}", fullPath);
+            return false;
+        }
+    }
+
+    public bool ShowInFolder(string filePath)
+    {
+        if (string.IsNullOrWhiteSpace(filePath)) return false;
+        var fullPath = Path.GetFullPath(filePath);
+
+        try
+        {
+            var dir = File.Exists(fullPath) ? Path.GetDirectoryName(fullPath) : fullPath;
+            if (!string.IsNullOrEmpty(dir) && Directory.Exists(dir))
+            {
+                Process.Start(new ProcessStartInfo("xdg-open", $"\"{dir}\"") { UseShellExecute = false });
+                return true;
+            }
+
+            return false;
+        }
+        catch (Exception ex)
+        {
+            _logger?.Error(ex, "Error al mostrar en carpeta en Linux: {FilePath}", fullPath);
+            return false;
+        }
+    }
+}
+
 public static class ServiceCollectionExtensions
 {
     public static IServiceCollection AddLinuxPlatform(this IServiceCollection services)
@@ -74,6 +128,7 @@ public static class ServiceCollectionExtensions
         services.TryAddSingleton<IShutterSoundService, LinuxShutterSoundService>();
         services.TryAddSingleton<IClipboardService, LinuxClipboardService>();
         services.TryAddSingleton<ITrayIconService, LinuxTrayIconService>();
+        services.TryAddSingleton<IShellService, LinuxShellService>();
         return services;
     }
 }

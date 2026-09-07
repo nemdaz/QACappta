@@ -14,6 +14,7 @@ using CommunityToolkit.Mvvm.Input;
 using Qapptia.App.Editor.ViewModels.Shapes;
 using Qapptia.Core.Abstractions;
 using Qapptia.Core.Configuration;
+using Qapptia.Core.Services;
 using IFontProvider = Qapptia.Editor.Core.IFontProvider;
 using Qapptia.App.Editor.Common;
 using Qapptia.Editor.Models;
@@ -28,6 +29,7 @@ namespace Qapptia.App.Editor.ViewModels;
 public partial class EditorViewModel : ObservableObject, IDisposable
 {
     private readonly IClipboardService? _clipboardService;
+    private readonly IShellService _shellService;
     private CancellationTokenSource? _toastCts;
 
     public SidebarViewModel Sidebar { get; }
@@ -60,17 +62,21 @@ public partial class EditorViewModel : ObservableObject, IDisposable
         IFontProvider fontProvider,
         IClipboardService? clipboardService = null,
         INavigationService? navigationService = null,
-        ICanvasStateService? canvasStateService = null)
+        ICanvasStateService? canvasStateService = null,
+        IShellService? shellService = null)
     {
         _clipboardService = clipboardService;
 
         var navService = navigationService ?? new NavigationService(Log.Logger.ForContext<NavigationService>());
         var canvasService = canvasStateService ?? new CanvasStateService(Log.Logger.ForContext<CanvasStateService>());
+        _shellService = shellService ?? NullShellService.Instance;
 
-        Sidebar = new SidebarViewModel(navService, stateService, savePath);
+        Sidebar = new SidebarViewModel(navService, stateService, savePath, _shellService);
         Toolbar = new ToolbarViewModel(stateService);
         Viewport = new CanvasViewportViewModel();
         Board = new CanvasBoardViewModel(canvasService, stateService);
+
+        Sidebar.ToastRequested += (msg, type) => ShowToast(msg, type);
 
         // Coordinación de eventos entre Sub-ViewModels
         Sidebar.FileSelected += (s, file) =>
@@ -197,6 +203,8 @@ public partial class EditorViewModel : ObservableObject, IDisposable
 
     public ObservableCollection<FolderItem> SidebarFolders => Sidebar.SidebarFolders;
     public NavigationItem? SelectedNode { get => Sidebar.SelectedNode; set => Sidebar.SelectedNode = value; }
+    public IRelayCommand<FileItem?> OpenFileCommand => Sidebar.OpenFileCommand;
+    public IRelayCommand<FileItem?> ShowInFolderCommand => Sidebar.ShowInFolderCommand;
 
     // --- Métodos de Delegación del Tablero y Herramientas ---
     public void StartTextInput(ITextInputShape shape) => Board.StartTextInput(shape);

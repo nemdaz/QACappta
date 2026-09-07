@@ -44,4 +44,9 @@
   <ItemGroup Condition="$([MSBuild]::IsOSPlatform('Windows'))">
     <ProjectReference Include="..\Qapptia.Platform.Windows\Qapptia.Platform.Windows.csproj" />
   </ItemGroup>
+
+  <ItemGroup Condition="!$([MSBuild]::IsOSPlatform('Windows'))">
+    <ProjectReference Include="..\Qapptia.Platform.Linux\Qapptia.Platform.Linux.csproj" />
+    <ProjectReference Include="..\Qapptia.Platform.MacOS\Qapptia.Platform.MacOS.csproj" />
+  </ItemGroup>
 </Project>
