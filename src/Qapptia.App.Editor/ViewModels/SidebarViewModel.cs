@@ -81,8 +81,6 @@ public partial class SidebarViewModel : ObservableObject, IDisposable
         }
     }
 
-    private static string NormalizePath(string path) => path.Replace('\\', '/');
-
     public void StartWatching(Action onFolderChanged)
     {
         _navigationService.StartWatching(_savePath, onFolderChanged);
@@ -104,7 +102,7 @@ public partial class SidebarViewModel : ObservableObject, IDisposable
         }
 
         var expandedFolders = _stateService.Load().Layout.ExpandedFolders;
-        var normalizedSavePath = NormalizePath(savePath);
+        var normalizedSavePath = NavigationService.NormalizePath(savePath);
 
         var rootFolder = await _navigationService.BuildTreeAsync(savePath, expandedFolders);
         if (rootFolder == null)
@@ -141,7 +139,7 @@ public partial class SidebarViewModel : ObservableObject, IDisposable
 
     public NavigationItem? FindNodeByPath(string path)
     {
-        return _navigationService.FindNodeByPath(SidebarFolders, NormalizePath(path));
+        return _navigationService.FindNodeByPath(SidebarFolders, NavigationService.NormalizePath(path));
     }
 
     private void AttachFolderExpandedEvents(FolderItem folder)
@@ -161,7 +159,7 @@ public partial class SidebarViewModel : ObservableObject, IDisposable
         if (e.PropertyName == nameof(NavigationItem.IsExpanded) && sender is FolderItem folder)
         {
             var state = _stateService.Load();
-            var normalizedPath = NormalizePath(folder.FullPath);
+            var normalizedPath = NavigationService.NormalizePath(folder.FullPath);
             var exists = state.Layout.ExpandedFolders.Any(p => string.Equals(p, normalizedPath, StringComparison.OrdinalIgnoreCase));
 
             if (folder.IsExpanded)

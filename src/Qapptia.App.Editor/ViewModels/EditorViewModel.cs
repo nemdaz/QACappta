@@ -13,7 +13,6 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Qapptia.App.Editor.ViewModels.Shapes;
 using Qapptia.Core.Abstractions;
-using Qapptia.Core.Configuration;
 using Qapptia.Core.Services;
 using IFontProvider = Qapptia.Editor.Core.IFontProvider;
 using Qapptia.App.Editor.Common;
@@ -29,7 +28,6 @@ namespace Qapptia.App.Editor.ViewModels;
 public partial class EditorViewModel : ObservableObject, IDisposable
 {
     private readonly IClipboardService? _clipboardService;
-    private readonly IShellService _shellService;
     private CancellationTokenSource? _toastCts;
 
     public SidebarViewModel Sidebar { get; }
@@ -69,9 +67,9 @@ public partial class EditorViewModel : ObservableObject, IDisposable
 
         var navService = navigationService ?? new NavigationService(Log.Logger.ForContext<NavigationService>());
         var canvasService = canvasStateService ?? new CanvasStateService(Log.Logger.ForContext<CanvasStateService>());
-        _shellService = shellService ?? NullShellService.Instance;
+        var shell = shellService ?? NullShellService.Instance;
 
-        Sidebar = new SidebarViewModel(navService, stateService, savePath, _shellService);
+        Sidebar = new SidebarViewModel(navService, stateService, savePath, shell);
         Toolbar = new ToolbarViewModel(stateService);
         Viewport = new CanvasViewportViewModel();
         Board = new CanvasBoardViewModel(canvasService, stateService);

@@ -3,16 +3,33 @@ using System.Threading.Tasks;
 using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Threading;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+using Qapptia.App.Editor.ViewModels;
+using Qapptia.Core.Abstractions;
 using Qapptia.Core.Configuration;
 using Qapptia.Core.Ipc;
 using Qapptia.Core.Platform;
+using Qapptia.Core.Services;
+using Qapptia.Editor.Core;
+using Qapptia.Editor.Services;
 using Qapptia.UI.Components.Theme;
 using Serilog;
 
+#if WINDOWS
+using Qapptia.Platform.Windows;
+#elif LINUX
+using Qapptia.Platform.Linux;
+#elif MAC
+using Qapptia.Platform.MacOS;
+#endif
+
 namespace Qapptia.App.Editor;
 
-sealed class Program
+public sealed class Program
 {
+    public static IServiceProvider? Services { get; private set; }
+
     [STAThread]
     public static void Main(string[] args)
     {
@@ -83,12 +100,75 @@ sealed class Program
 
         try
         {
+            Services = ConfigureServices();
             BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
         }
         finally
         {
             try { ipcServer.StopAsync().GetAwaiter().GetResult(); } catch { }
         }
+    }
+
+    public static IServiceProvider ConfigureServices()
+    {
+        var services = new ServiceCollection();
+
+        // Logging & Configuración
+        services.AddSingleton<Serilog.ILogger>(Log.Logger);
+        var configPath = Qapptia.Core.Constants.DefaultConfigPath;
+        services.AddSingleton<IConfigService>(_ => new JsonConfigService(configPath));
+
+        // Módulos transversales de Plataforma (mismo estándar que App.Capture)
+#if WINDOWS
+        if (OperatingSystem.IsWindows()) services.AddWindowsPlatform();
+#elif LINUX
+        if (OperatingSystem.IsLinux()) services.AddLinuxPlatform();
+#elif MAC
+        if (OperatingSystem.IsMacOS()) services.AddMacOSPlatform();
+#endif
+
+        // Fallback neutro si no hubiese shell en la plataforma actual
+        services.TryAddSingleton<IShellService>(NullShellService.Instance);
+
+        // Servicios de dominio del Editor
+        services.AddSingleton<IFontProvider>(sp =>
+            new AssetFontProvider(sp.GetRequiredService<Serilog.ILogger>().ForContext<AssetFontProvider>()));
+
+        services.AddSingleton<INavigationService>(sp =>
+            new NavigationService(sp.GetRequiredService<Serilog.ILogger>().ForContext<NavigationService>()));
+
+        services.AddSingleton<ICanvasStateService>(sp =>
+            new CanvasStateService(sp.GetRequiredService<Serilog.ILogger>().ForContext<CanvasStateService>()));
+
+        services.AddSingleton<IEditorStateService>(sp =>
+        {
+            var config = sp.GetRequiredService<IConfigService>();
+            var savePath = string.IsNullOrWhiteSpace(config.Current.SavePath)
+                ? Qapptia.Core.Constants.DefaultSavePath
+                : config.Current.SavePath;
+            var logger = sp.GetRequiredService<Serilog.ILogger>().ForContext<EditorStateService>();
+            return new EditorStateService(savePath, Qapptia.Core.Constants.EditorStateFileName, logger);
+        });
+
+        // ViewModel y Vistas
+        services.AddTransient<EditorViewModel>(sp =>
+        {
+            var config = sp.GetRequiredService<IConfigService>();
+            var savePath = string.IsNullOrWhiteSpace(config.Current.SavePath)
+                ? Qapptia.Core.Constants.DefaultSavePath
+                : config.Current.SavePath;
+
+            return new EditorViewModel(
+                sp.GetRequiredService<IEditorStateService>(),
+                savePath,
+                sp.GetRequiredService<IFontProvider>(),
+                sp.GetService<IClipboardService>(),
+                sp.GetRequiredService<INavigationService>(),
+                sp.GetRequiredService<ICanvasStateService>(),
+                sp.GetRequiredService<IShellService>());
+        });
+
+        return services.BuildServiceProvider();
     }
 
     public static AppBuilder BuildAvaloniaApp()
@@ -98,5 +178,12 @@ sealed class Program
             .WithDeveloperTools()
 #endif
             .WithInterFont()
-            .LogToTrace();
+            .LogToTrace()
+            .AfterSetup(b =>
+            {
+                if (b.Instance is App app)
+                {
+                    app.Services = Services ?? ConfigureServices();
+                }
+            });
 }

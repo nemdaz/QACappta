@@ -2,12 +2,10 @@ using System;
 using System.Linq;
 using Avalonia;
 using Avalonia.Controls;
-using Avalonia.VisualTree;
 using Qapptia.App.Editor.ViewModels;
 using Qapptia.App.Editor.Services;
 using Qapptia.App.Editor.Common;
 using Qapptia.Editor.Models.Navigation;
-using Qapptia.Editor.Services;
 
 namespace Qapptia.App.Editor;
 
