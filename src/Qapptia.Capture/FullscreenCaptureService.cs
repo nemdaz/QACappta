@@ -131,6 +131,8 @@ public sealed class FullscreenCaptureService : IFullscreenCaptureService
         var dir = Path.GetDirectoryName(path)!;
         Directory.CreateDirectory(dir);
         await File.WriteAllBytesAsync(path, pngBytes, ct);
+        string mediaId = Guid.NewGuid().ToString();
+        await Qapptia.Core.Services.ImageMetadataService.AppendMediaMetadataAsync(path, mediaId, Qapptia.Core.Constants.MediaTypePng, DateTime.UtcNow);
 
         if (job.Mode == CaptureMode.Fullscreen && _config.Current.CopyToClipboardScreen ||
             job.Mode == CaptureMode.Area && _config.Current.CopyToClipboardArea)

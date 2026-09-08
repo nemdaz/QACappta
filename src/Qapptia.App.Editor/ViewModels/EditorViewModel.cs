@@ -249,10 +249,14 @@ public partial class EditorViewModel : ObservableObject, IDisposable
     public ObservableCollection<string> ZoomOptions => Viewport.ZoomOptions;
     public string SelectedZoomString { get => Viewport.SelectedZoomString; set => Viewport.SelectedZoomString = value; }
 
-    public ObservableCollection<FolderItem> SidebarFolders => Sidebar.SidebarFolders;
+    public ObservableCollection<GroupItem> SidebarGroups => Sidebar.SidebarGroups;
+    public SidebarViewMode SidebarViewMode => Sidebar.ViewMode;
+    public bool IsTreeViewActive => Sidebar.IsTreeViewActive;
+    public bool IsCalendarViewActive => Sidebar.IsCalendarViewActive;
     public NavigationItem? SelectedNode { get => Sidebar.SelectedNode; set => Sidebar.SelectedNode = value; }
     public IRelayCommand<FileItem?> OpenFileCommand => Sidebar.OpenFileCommand;
     public IRelayCommand<FileItem?> ShowInFolderCommand => Sidebar.ShowInFolderCommand;
+    public IAsyncRelayCommand<SidebarViewMode> SetSidebarViewModeCommand => Sidebar.SetViewModeCommand;
 
     // --- Métodos de Delegación del Tablero y Herramientas ---
     public void StartTextInput(ITextInputShape shape) => Board.StartTextInput(shape);

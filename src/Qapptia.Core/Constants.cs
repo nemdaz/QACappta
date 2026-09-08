@@ -18,13 +18,16 @@ public static class Constants
     public const string MetadataMediaIdEnd = "</Qapptia.mediaId>";
     public const string MetadataMediaTypeStart = "<Qapptia.mediaType>";
     public const string MetadataMediaTypeEnd = "</Qapptia.mediaType>";
+    public const string MetadataCreatedAtStart = "<Qapptia.createdAt>";
+    public const string MetadataCreatedAtEnd = "</Qapptia.createdAt>";
     public const string MetadataPropertyMediaId = "Qapptia.mediaId";
     public const string MetadataPropertyMediaType = "Qapptia.mediaType";
+    public const string MetadataPropertyCreatedAt = "Qapptia.createdAt";
 
     // Constantes de persistencia y buffers de lectura rápida
     public const string JsonFileExtension = ".json";
     public const string JsonSearchPattern = "*.json";
-    public const int MetadataBufferSize = 256;
+    public const int MetadataBufferSize = 512;
     public const int JsonHeaderBufferSize = 512;
 
     // Tipos MIME estándar (IANA / HTTP Content-Type)

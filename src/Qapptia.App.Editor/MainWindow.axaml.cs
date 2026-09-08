@@ -216,7 +216,7 @@ public partial class MainWindow : Window
 
         if (string.IsNullOrEmpty(mediaId))
         {
-            var (newId, _) = Qapptia.Core.Services.ImageMetadataService.EnsureImageMetadata(filePath);
+            var (newId, _, _) = Qapptia.Core.Services.ImageMetadataService.EnsureImageMetadata(filePath);
             mediaId = newId;
         }
 

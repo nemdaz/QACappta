@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Threading;
@@ -17,6 +18,7 @@ public sealed class NavigationService : INavigationService
     private static readonly HashSet<string> s_allowedExtensions = new(Qapptia.Core.Constants.SupportedImageExtensions, StringComparer.OrdinalIgnoreCase);
 
     private readonly ILogger? _logger;
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, (long Length, DateTime LastWriteUtc, DateTime EffectiveDate)> _effectiveDateCache = new(StringComparer.OrdinalIgnoreCase);
     private FileSystemWatcher? _fileWatcher;
     private CancellationTokenSource? _watcherDebounceCts;
     private Action? _onFileSystemChanged;
@@ -41,7 +43,7 @@ public sealed class NavigationService : INavigationService
             {
                 Name = dirInfo.Name,
                 FullPath = normalizedRoot,
-                IsExpanded = expandedFolders.Any(p => string.Equals(p, normalizedRoot, StringComparison.OrdinalIgnoreCase)) || expandedFolders.Count == 0
+                IsExpanded = expandedFolders.Any(p => string.Equals(p, normalizedRoot, StringComparison.OrdinalIgnoreCase))
             };
 
             if (string.IsNullOrEmpty(root.Name)) root.Name = normalizedRoot;
@@ -51,17 +53,170 @@ public sealed class NavigationService : INavigationService
         }, ct).ConfigureAwait(false);
     }
 
+    public async Task<IReadOnlyList<GroupItem>> BuildCalendarTreeAsync(string rootPath, IReadOnlyList<string> expandedGroups, string? weekLabel = null, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(rootPath) || !Directory.Exists(rootPath))
+            return Array.Empty<GroupItem>();
+
+        return await Task.Run(() =>
+        {
+            var dirInfo = new DirectoryInfo(rootPath);
+            var allFiles = new List<FileItem>();
+            CollectFilesRecursively(dirInfo, allFiles);
+
+            var culture = new CultureInfo("es-ES");
+            var today = DateTime.Today;
+            int currentYear = today.Year;
+
+            var filesByDate = allFiles
+                .GroupBy(f => f.EffectiveDateUtc.ToLocalTime().Date)
+                .ToDictionary(g => g.Key, g => g.OrderByDescending(f => f.EffectiveDateUtc).ToList());
+
+            var targetYears = allFiles
+                .Select(f => f.EffectiveDateUtc.ToLocalTime().Year)
+                .Append(currentYear)
+                .Distinct()
+                .OrderByDescending(y => y);
+
+            var years = new List<GroupItem>();
+
+            foreach (int year in targetYears)
+            {
+                var yearGroup = new CalendarGroupItem(GroupKind.Year)
+                {
+                    Name = year.ToString(CultureInfo.InvariantCulture),
+                    FullPath = $"cal://{year}",
+                    Year = year
+                };
+                yearGroup.IsExpanded = expandedGroups.Any(p => string.Equals(p, yearGroup.FullPath, StringComparison.OrdinalIgnoreCase));
+
+                int startMonth = (year >= currentYear ? today.Month : 12);
+                for (int month = startMonth; month >= 1; month--)
+                {
+                    string rawMonthName = culture.DateTimeFormat.GetMonthName(month);
+                    string monthName = char.ToUpper(rawMonthName[0], culture) + rawMonthName[1..];
+
+                    var monthGroup = new CalendarGroupItem(GroupKind.Month)
+                    {
+                        Name = monthName,
+                        FullPath = $"cal://{year}/{month:D2}",
+                        Year = year,
+                        Month = month,
+                        Parent = yearGroup
+                    };
+                    monthGroup.IsExpanded = expandedGroups.Any(p => string.Equals(p, monthGroup.FullPath, StringComparison.OrdinalIgnoreCase));
+
+                    int daysInMonth = DateTime.DaysInMonth(year, month);
+                    var monthDays = Enumerable.Range(1, daysInMonth)
+                        .Select(dayNum => new DateTime(year, month, dayNum))
+                        .ToList();
+
+                    var weekGroups = monthDays
+                        .GroupBy(d => ISOWeek.GetWeekOfYear(d))
+                        .OrderByDescending(g => g.Key);
+
+                    foreach (var weekGroupData in weekGroups)
+                    {
+                        int weekNum = weekGroupData.Key;
+                        var sampleDay = weekGroupData.First();
+                        int diffToMonday = (7 + ((int)sampleDay.DayOfWeek - (int)DayOfWeek.Monday)) % 7;
+                        DateTime monday = sampleDay.AddDays(-diffToMonday);
+                        DateTime sunday = monday.AddDays(6);
+
+                        string startMmm = GetShortMonthName(culture, monday.Month);
+                        string endMmm = GetShortMonthName(culture, sunday.Month);
+                        string resolvedWeekLabel = !string.IsNullOrWhiteSpace(weekLabel) ? weekLabel : "Semana";
+
+                        var weekGroup = new CalendarGroupItem(GroupKind.Week)
+                        {
+                            Name = $"{monday:dd} {startMmm} - {sunday:dd} {endMmm} ({resolvedWeekLabel} {weekNum})",
+                            FullPath = $"cal://{year}/{month:D2}/w{weekNum:D2}",
+                            Year = year,
+                            Month = month,
+                            WeekNumber = weekNum,
+                            Parent = monthGroup
+                        };
+                        weekGroup.IsExpanded = expandedGroups.Any(p => string.Equals(p, weekGroup.FullPath, StringComparison.OrdinalIgnoreCase));
+
+                        // Toda semana contiene rigurosamente sus 7 días completos (Lunes a Domingo) conforme a ISO 8601
+                        for (int dayOffset = 6; dayOffset >= 0; dayOffset--)
+                        {
+                            DateTime day = monday.AddDays(dayOffset);
+                            string rawDayName = culture.DateTimeFormat.GetDayName(day.DayOfWeek);
+                            string dayName = rawDayName.ToLower(culture);
+                            string dayMmm = GetShortMonthName(culture, day.Month);
+
+                            var dayGroup = new CalendarGroupItem(GroupKind.Day)
+                            {
+                                Name = $"{day:dd} {dayMmm}, {dayName}",
+                                FullPath = $"cal://{year}/{month:D2}/w{weekNum:D2}/{day:yyyy-MM-dd}",
+                                Year = year,
+                                Month = month,
+                                WeekNumber = weekNum,
+                                Date = day,
+                                Parent = weekGroup
+                            };
+                            dayGroup.IsExpanded = expandedGroups.Any(p => string.Equals(p, dayGroup.FullPath, StringComparison.OrdinalIgnoreCase));
+
+                            if (filesByDate.TryGetValue(day, out var dayFiles) && dayFiles.Count > 0)
+                            {
+                                foreach (var file in dayFiles)
+                                {
+                                    file.Parent = dayGroup;
+                                    dayGroup.Items.Add(file);
+                                }
+                                dayGroup.EffectiveDateUtc = dayFiles.Max(f => f.EffectiveDateUtc);
+                            }
+                            else
+                            {
+                                dayGroup.EffectiveDateUtc = day.ToUniversalTime();
+                            }
+
+                            weekGroup.Items.Add(dayGroup);
+                        }
+
+                        if (weekGroup.Items.Count > 0)
+                        {
+                            weekGroup.EffectiveDateUtc = weekGroup.Items.Max(i => i.EffectiveDateUtc);
+                        }
+                        monthGroup.Items.Add(weekGroup);
+                    }
+
+                    if (monthGroup.Items.Count > 0)
+                    {
+                        monthGroup.EffectiveDateUtc = monthGroup.Items.Max(i => i.EffectiveDateUtc);
+                    }
+                    yearGroup.Items.Add(monthGroup);
+                }
+
+                if (yearGroup.Items.Count > 0)
+                {
+                    yearGroup.EffectiveDateUtc = yearGroup.Items.Max(i => i.EffectiveDateUtc);
+                }
+                years.Add(yearGroup);
+            }
+
+            return years;
+        }, ct).ConfigureAwait(false);
+    }
+
     public NavigationItem? FindNodeByPath(IEnumerable<NavigationItem> nodes, string path)
     {
+        if (string.IsNullOrEmpty(path)) return null;
         var normalizedTarget = NormalizePath(path);
+        return FindNodeRecursive(nodes, normalizedTarget);
+    }
+
+    private static NavigationItem? FindNodeRecursive(IEnumerable<NavigationItem> nodes, string normalizedTarget)
+    {
         foreach (var node in nodes)
         {
-            if (string.Equals(NormalizePath(node.FullPath), normalizedTarget, StringComparison.OrdinalIgnoreCase))
+            if (string.Equals(node.FullPath, normalizedTarget, StringComparison.OrdinalIgnoreCase))
                 return node;
 
-            if (node is FolderItem folder)
+            if (node is GroupItem group && group.Items.Count > 0)
             {
-                var found = FindNodeByPath(folder.Items, normalizedTarget);
+                var found = FindNodeRecursive(group.Items, normalizedTarget);
                 if (found != null) return found;
             }
         }
@@ -117,6 +272,40 @@ public sealed class NavigationService : INavigationService
         StopWatching();
     }
 
+    private void CollectFilesRecursively(DirectoryInfo dirInfo, List<FileItem> results)
+    {
+        try
+        {
+            foreach (var file in dirInfo.EnumerateFiles())
+            {
+                if (!s_allowedExtensions.Contains(file.Extension)) continue;
+
+                results.Add(new FileItem
+                {
+                    Name = file.Name,
+                    FullPath = NormalizePath(file.FullName),
+                    EffectiveDateUtc = GetEffectiveDate(file)
+                });
+            }
+
+            foreach (var subDir in dirInfo.EnumerateDirectories())
+            {
+                if ((subDir.Attributes & FileAttributes.Hidden) != 0 ||
+                    (subDir.Attributes & FileAttributes.System) != 0 ||
+                    subDir.Name.StartsWith('.'))
+                {
+                    continue;
+                }
+
+                CollectFilesRecursively(subDir, results);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger?.Warning(ex, "Error al escanear directorio {Path} para calendario", dirInfo.FullName);
+        }
+    }
+
     private void PopulateFolder(FolderItem parentFolder, DirectoryInfo dirInfo, IReadOnlyList<string> expandedFolders)
     {
         var subFolders = new List<FolderItem>();
@@ -132,16 +321,12 @@ public sealed class NavigationService : INavigationService
                 {
                     Name = subDir.Name,
                     FullPath = normalizedPath,
-                    IsExpanded = expandedFolders.Any(p => string.Equals(p, normalizedPath, StringComparison.OrdinalIgnoreCase))
+                    IsExpanded = expandedFolders.Any(p => string.Equals(p, normalizedPath, StringComparison.OrdinalIgnoreCase)),
+                    Parent = parentFolder
                 };
 
                 PopulateFolder(folderItem, subDir, expandedFolders);
-
-                if (folderItem.Items.Count > 0)
-                {
-                    folderItem.EffectiveDateUtc = folderItem.Items.Max(i => i.EffectiveDateUtc);
-                    subFolders.Add(folderItem);
-                }
+                subFolders.Add(folderItem);
             }
         }
         catch (Exception ex)
@@ -156,12 +341,14 @@ public sealed class NavigationService : INavigationService
             {
                 if (!s_allowedExtensions.Contains(file.Extension)) continue;
 
-                DateTime effectiveDate = GetEffectiveDate(file);
+                // En modo Árbol se usa directamente la fecha de creación en memoria provista por el sistema de archivos
+                DateTime creationDate = Qapptia.Core.Services.ImageMetadataService.GetFileCreationTimeUtc(file);
                 files.Add(new FileItem
                 {
                     Name = file.Name,
                     FullPath = NormalizePath(file.FullName),
-                    EffectiveDateUtc = effectiveDate
+                    EffectiveDateUtc = creationDate,
+                    Parent = parentFolder
                 });
             }
         }
@@ -170,7 +357,8 @@ public sealed class NavigationService : INavigationService
             _logger?.Warning(ex, "No se pudieron listar los archivos de {Path}", dirInfo.FullName);
         }
 
-        var sortedFolders = subFolders.OrderByDescending(f => f.EffectiveDateUtc);
+        // Grupos ordenados descendente por nombre y archivos ordenados descendente por fecha de creación
+        var sortedFolders = subFolders.OrderByDescending(f => f.Name, StringComparer.OrdinalIgnoreCase);
         var sortedFiles = files.OrderByDescending(f => f.EffectiveDateUtc);
 
         foreach (var folder in sortedFolders)
@@ -182,34 +370,40 @@ public sealed class NavigationService : INavigationService
         {
             parentFolder.Items.Add(file);
         }
+    }
 
-        if (parentFolder.Items.Count > 0)
+    private DateTime GetEffectiveDate(FileInfo file)
+    {
+        if (_effectiveDateCache.TryGetValue(file.FullName, out var cached) &&
+            cached.Length == file.Length &&
+            cached.LastWriteUtc == file.LastWriteTimeUtc)
         {
-            parentFolder.EffectiveDateUtc = parentFolder.Items.Max(i => i.EffectiveDateUtc);
+            return cached.EffectiveDate;
+        }
+
+        DateTime resolvedDate;
+
+        // 1. Metadato canónico embebido en el trailer del archivo
+        var (_, _, createdAt) = Qapptia.Core.Services.ImageMetadataService.GetImageMetadata(file.FullName);
+        if (createdAt.HasValue && createdAt.Value > DateTime.MinValue)
+        {
+            resolvedDate = createdAt.Value;
         }
         else
         {
-            parentFolder.EffectiveDateUtc = dirInfo.CreationTimeUtc;
+            // 2. Fallback natural del sistema de archivos mediante método utilitario común sin redundancia
+            resolvedDate = Qapptia.Core.Services.ImageMetadataService.GetFileCreationTimeUtc(file);
         }
+
+        _effectiveDateCache[file.FullName] = (file.Length, file.LastWriteTimeUtc, resolvedDate);
+        return resolvedDate;
     }
 
-    private static DateTime GetEffectiveDate(FileInfo file)
+    private void OnFileSystemEvent(object sender, FileSystemEventArgs e)
     {
-        var nameWithoutExt = Path.GetFileNameWithoutExtension(file.Name);
-        var parts = nameWithoutExt.Split('_');
-        if (parts.Length >= 2 && parts[^2].Length == 8 && parts[^1].Length == 6)
-        {
-            var dateStr = parts[^2] + parts[^1];
-            if (DateTime.TryParseExact(dateStr, "yyyyMMddHHmmss", System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.AssumeUniversal, out var parsedDate))
-            {
-                return parsedDate.ToUniversalTime();
-            }
-        }
-
-        return file.CreationTimeUtc;
+        _effectiveDateCache.TryRemove(e.FullPath, out _);
+        TriggerDebouncedChange();
     }
-
-    private void OnFileSystemEvent(object sender, FileSystemEventArgs e) => TriggerDebouncedChange();
     private void OnFileSystemRenamed(object sender, RenamedEventArgs e)
     {
         try
@@ -240,6 +434,9 @@ public sealed class NavigationService : INavigationService
             _logger?.Warning(ex, "Error al sincronizar renombramiento de imagen en tiempo real para {Path}", e.FullPath);
         }
 
+        _effectiveDateCache.TryRemove(e.OldFullPath, out _);
+        _effectiveDateCache.TryRemove(e.FullPath, out _);
+
         TriggerDebouncedChange();
     }
 
@@ -257,5 +454,20 @@ public sealed class NavigationService : INavigationService
                 _onFileSystemChanged?.Invoke();
             }
         }, token);
+    }
+
+    // Obtiene la abreviatura de 3 letras del mes en minúsculas conforme al formato {mmm}
+    private static string GetShortMonthName(CultureInfo culture, int month)
+    {
+        string raw = culture.DateTimeFormat.GetAbbreviatedMonthName(month).TrimEnd('.');
+        if (raw.Equals("sept", StringComparison.OrdinalIgnoreCase) || raw.Equals("set", StringComparison.OrdinalIgnoreCase))
+        {
+            return "sep";
+        }
+        if (raw.Length > 3)
+        {
+            raw = raw[..3];
+        }
+        return raw.ToLower(culture);
     }
 }

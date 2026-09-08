@@ -4,6 +4,7 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:vm="clr-namespace:Qapptia.App.Editor.ViewModels"
         xmlns:nav="clr-namespace:Qapptia.Editor.Models.Navigation;assembly=Qapptia.Editor"
+        xmlns:converters="clr-namespace:Qapptia.App.Editor.Converters"
         xmlns:controls="clr-namespace:Qapptia.App.Editor.Controls"
         xmlns:shared="clr-namespace:Qapptia.UI.Components.Controls;assembly=Qapptia.UI.Components"
         mc:Ignorable="d" d:DesignWidth="1200" d:DesignHeight="800"
@@ -13,6 +14,34 @@
         Icon="avares://Qapptia.App.Editor/Assets/app_icon.ico"
         Background="{DynamicResource M3SurfaceBrush}"
         WindowStartupLocation="CenterScreen">
+
+    <Window.Resources>
+        <converters:ResourceKeyToGeometryConverter x:Key="KeyToGeometryConverter" />
+        <converters:BoolToDimmedOpacityConverter x:Key="BoolToDimmedOpacityConverter" />
+    </Window.Resources>
+
+    <Window.Styles>
+        <Style Selector="Button.sidebar-toggle">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Padding" Value="5,3" />
+            <Setter Property="CornerRadius" Value="4" />
+        </Style>
+        <Style Selector="Button.sidebar-toggle PathIcon">
+            <Setter Property="Foreground" Value="{DynamicResource M3OnSurfaceVariantBrush}" />
+        </Style>
+        <Style Selector="Button.sidebar-toggle:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource M3HoverBrush}" />
+        </Style>
+        <Style Selector="Button.sidebar-toggle:pointerover PathIcon">
+            <Setter Property="Foreground" Value="{DynamicResource M3OnSurfaceBrush}" />
+        </Style>
+        <Style Selector="Button.sidebar-toggle.active /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource M3GrayContainerBrush}" />
+        </Style>
+        <Style Selector="Button.sidebar-toggle.active PathIcon">
+            <Setter Property="Foreground" Value="{DynamicResource M3OnGrayContainerBrush}" />
+        </Style>
+    </Window.Styles>
 
     <Grid RowDefinitions="Auto, *, Auto">
         
@@ -69,15 +98,34 @@
             <!-- Right Sidebar (Explorador) -->
             <Border Grid.Column="2" Background="{DynamicResource M3SurfaceContainerBrush}" BorderBrush="{DynamicResource M3OutlineVariantBrush}" BorderThickness="1,0,0,0">
                 <Grid RowDefinitions="Auto, *">
-                    <Grid Grid.Row="0" ColumnDefinitions="*, Auto" Margin="12,12,12,8">
+                    <Grid Grid.Row="0" ColumnDefinitions="*, Auto" Margin="12,10,12,8">
                         <TextBlock Grid.Column="0" Text="Explorador" Foreground="{DynamicResource M3OnSurfaceBrush}" FontWeight="SemiBold" VerticalAlignment="Center" />
-                        <!-- Recargar -->
-                        <Button Grid.Column="1" Command="{Binding LoadSidebarImagesCommand}" Background="Transparent" Padding="4,2" ToolTip.Tip="Recargar">
-                            <PathIcon Data="{StaticResource IconRefresh}" Width="14" Height="14"/>
-                        </Button>
+                        
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="2" VerticalAlignment="Center">
+                            <!-- Selector de vistas [ Árbol | Calendario ] -->
+                            <Button Command="{Binding SetSidebarViewModeCommand}"
+                                    CommandParameter="{x:Static vm:SidebarViewMode.Tree}"
+                                    Classes="sidebar-toggle"
+                                    Classes.active="{Binding IsTreeViewActive}"
+                                    ToolTip.Tip="Vista de árbol">
+                                <PathIcon Data="{StaticResource IconAccountTree}" Width="13" Height="13"/>
+                            </Button>
+                            <Button Command="{Binding SetSidebarViewModeCommand}"
+                                    CommandParameter="{x:Static vm:SidebarViewMode.Calendar}"
+                                    Classes="sidebar-toggle"
+                                    Classes.active="{Binding IsCalendarViewActive}"
+                                    ToolTip.Tip="Vista de calendario">
+                                <PathIcon Data="{StaticResource IconCalendarMonth}" Width="13" Height="13"/>
+                            </Button>
+
+                            <!-- Recargar (homologado a 13x13 y sutil) -->
+                            <Button Command="{Binding LoadSidebarImagesCommand}" Classes="sidebar-toggle" ToolTip.Tip="Recargar" Margin="2,0,0,0">
+                                <PathIcon Data="{StaticResource IconRefresh}" Width="13" Height="13"/>
+                            </Button>
+                        </StackPanel>
                     </Grid>
                     
-                    <TreeView Grid.Row="1" ItemsSource="{Binding SidebarFolders}" SelectedItem="{Binding SelectedNode}" Background="Transparent" BorderThickness="0">
+                    <TreeView Grid.Row="1" ItemsSource="{Binding SidebarGroups}" SelectedItem="{Binding SelectedNode}" Background="Transparent" BorderThickness="0">
                         <TreeView.ItemContainerTheme>
                             <ControlTheme TargetType="TreeViewItem" BasedOn="{StaticResource {x:Type TreeViewItem}}" x:DataType="nav:NavigationItem">
                                 <Setter Property="IsExpanded" Value="{Binding IsExpanded, Mode=TwoWay}" />
@@ -85,29 +133,43 @@
                         </TreeView.ItemContainerTheme>
                         <TreeView.Styles>
                             <Style Selector="ToggleButton#PART_ExpandCollapseChevron">
-                                <Setter Property="Width" Value="18" />
-                                <Setter Property="Height" Value="18" />
-                                <Setter Property="Margin" Value="0,0,6,0" />
+                                <Setter Property="Width" Value="12" />
+                                <Setter Property="Height" Value="12" />
+                                <Setter Property="Margin" Value="0,0,2,0" />
                                 <Setter Property="Template">
                                     <ControlTemplate>
-                                        <Border Background="Transparent">
-                                            <PathIcon x:Name="FolderIcon" Classes="folder" Width="16" Height="16" Foreground="{DynamicResource M3OnSurfaceVariantBrush}"/>
+                                        <Border Background="Transparent" Width="12" Height="12">
+                                            <PathIcon x:Name="ChevronIcon" Data="{StaticResource IconChevronRight}" Width="8" Height="8" Foreground="{DynamicResource M3OnSurfaceVariantBrush}" RenderTransformOrigin="50%,50%">
+                                                <PathIcon.RenderTransform>
+                                                    <RotateTransform Angle="0" />
+                                                </PathIcon.RenderTransform>
+                                                <PathIcon.Transitions>
+                                                    <Transitions>
+                                                        <TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.15" />
+                                                    </Transitions>
+                                                </PathIcon.Transitions>
+                                            </PathIcon>
                                         </Border>
                                     </ControlTemplate>
                                 </Setter>
                             </Style>
-                            <Style Selector="ToggleButton#PART_ExpandCollapseChevron /template/ PathIcon.folder">
-                                <!-- Carpeta cerrada -->
-                                <Setter Property="Data" Value="{StaticResource IconFolder}" />
+                            <Style Selector="ToggleButton#PART_ExpandCollapseChevron:checked /template/ PathIcon#ChevronIcon">
+                                <Setter Property="RenderTransform" Value="rotate(90deg)" />
                             </Style>
-                            <Style Selector="ToggleButton#PART_ExpandCollapseChevron:checked /template/ PathIcon.folder">
-                                <!-- Carpeta abierta -->
-                                <Setter Property="Data" Value="{StaticResource IconFolderOpen}" />
+                            <!-- Reserva de espacio homogéneo compacto para ítems sin hijos garantizando alineación vertical estricta -->
+                            <Style Selector="TreeViewItem:empty /template/ ToggleButton#PART_ExpandCollapseChevron">
+                                <Setter Property="IsVisible" Value="True" />
+                                <Setter Property="Opacity" Value="0" />
+                                <Setter Property="IsHitTestVisible" Value="False" />
                             </Style>
                         </TreeView.Styles>
                         <TreeView.DataTemplates>
-                            <TreeDataTemplate DataType="nav:FolderItem" ItemsSource="{Binding Items}">
-                                <StackPanel Orientation="Horizontal" Spacing="6" Background="Transparent">
+                            <TreeDataTemplate DataType="nav:GroupItem" ItemsSource="{Binding Items}">
+                                <StackPanel Orientation="Horizontal" Spacing="6" Background="Transparent"
+                                            Opacity="{Binding IsDimmed, Converter={StaticResource BoolToDimmedOpacityConverter}}">
+                                    <PathIcon Data="{Binding IconKey, Converter={StaticResource KeyToGeometryConverter}}"
+                                              Width="14" Height="14"
+                                              Foreground="{DynamicResource M3OnSurfaceVariantBrush}"/>
                                     <TextBlock Text="{Binding Name}" Foreground="{DynamicResource M3OnSurfaceBrush}" FontWeight="SemiBold" FontSize="13" Padding="0,2" VerticalAlignment="Center" />
                                 </StackPanel>
                             </TreeDataTemplate>
@@ -123,7 +185,7 @@
                                                       CommandParameter="{Binding}" />
                                         </ContextMenu>
                                     </Border.ContextMenu>
-                                    <StackPanel Orientation="Horizontal" Spacing="6" Background="Transparent" Margin="2,0,0,0">
+                                    <StackPanel Orientation="Horizontal" Spacing="6" Background="Transparent">
                                         <!-- Imagen -->
                                         <PathIcon Data="{StaticResource IconImage}" Width="14" Height="14" Foreground="{DynamicResource M3OnSurfaceVariantBrush}"/>
                                         <TextBlock Text="{Binding Name}" Foreground="{DynamicResource M3OnSurfaceBrush}" FontSize="13" Padding="0,2" VerticalAlignment="Center" />

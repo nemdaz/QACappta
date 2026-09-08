@@ -15,14 +15,32 @@ using Qapptia.Editor.Services;
 
 namespace Qapptia.App.Editor.ViewModels;
 
+/// <summary>
+/// Modos de visualización del panel lateral de navegación.
+/// </summary>
+public enum SidebarViewMode
+{
+    Tree,
+    Calendar
+}
+
 public partial class SidebarViewModel : ObservableObject, IDisposable
 {
     private readonly INavigationService _navigationService;
     private readonly IEditorStateService _stateService;
     private readonly IShellService _shellService;
     private readonly string _savePath;
+    private bool _isLoading;
 
-    public ObservableCollection<FolderItem> SidebarFolders { get; } = new();
+    public ObservableCollection<GroupItem> SidebarGroups { get; } = new();
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsTreeViewActive))]
+    [NotifyPropertyChangedFor(nameof(IsCalendarViewActive))]
+    private SidebarViewMode _viewMode = SidebarViewMode.Calendar;
+
+    public bool IsTreeViewActive => ViewMode == SidebarViewMode.Tree;
+    public bool IsCalendarViewActive => ViewMode == SidebarViewMode.Calendar;
 
     [ObservableProperty]
     private NavigationItem? _selectedNode;
@@ -40,6 +58,30 @@ public partial class SidebarViewModel : ObservableObject, IDisposable
         _stateService = stateService;
         _savePath = savePath;
         _shellService = shellService ?? NullShellService.Instance;
+
+        var state = _stateService.Load();
+        if (Enum.TryParse<SidebarViewMode>(state.Layout.SidebarViewMode, true, out var parsedMode))
+        {
+            _viewMode = parsedMode;
+        }
+        else
+        {
+            _viewMode = SidebarViewMode.Calendar;
+        }
+    }
+
+    [RelayCommand]
+    public async Task SetViewMode(SidebarViewMode mode)
+    {
+        if (ViewMode == mode) return;
+
+        ViewMode = mode;
+
+        var state = _stateService.Load();
+        state.Layout.SidebarViewMode = mode.ToString();
+        _stateService.Save(state);
+
+        await LoadSidebarImagesCoreAsync(expandAncestorsForSelected: true);
     }
 
     [RelayCommand]
@@ -88,93 +130,142 @@ public partial class SidebarViewModel : ObservableObject, IDisposable
 
     partial void OnSelectedNodeChanged(NavigationItem? value)
     {
+        if (value is FileItem file)
+        {
+            var state = _stateService.Load();
+            state.Session.LastSelectedFile = file.FullPath;
+            _stateService.Save(state);
+        }
+
         FileSelected?.Invoke(this, value as FileItem);
     }
 
     [RelayCommand]
     public async Task LoadSidebarImagesAsync()
     {
-        var savePath = _savePath;
-        if (!Directory.Exists(savePath))
+        await LoadSidebarImagesCoreAsync(expandAncestorsForSelected: false);
+    }
+
+    public async Task LoadSidebarImagesCoreAsync(bool expandAncestorsForSelected)
+    {
+        if (_isLoading) return;
+        _isLoading = true;
+
+        try
         {
-            SidebarFolders.Clear();
-            return;
-        }
-
-        var expandedFolders = _stateService.Load().Layout.ExpandedFolders;
-        var normalizedSavePath = NavigationService.NormalizePath(savePath);
-
-        var rootFolder = await _navigationService.BuildTreeAsync(savePath, expandedFolders);
-        if (rootFolder == null)
-        {
-            SidebarFolders.Clear();
-            return;
-        }
-
-        AttachFolderExpandedEvents(rootFolder);
-
-        SidebarFolders.Clear();
-        SidebarFolders.Add(rootFolder);
-
-        if (rootFolder.IsExpanded && expandedFolders.Count == 0)
-        {
-            var stateToUpdate = _stateService.Load();
-            if (!stateToUpdate.Layout.ExpandedFolders.Contains(normalizedSavePath))
+            var savePath = _savePath;
+            if (!Directory.Exists(savePath))
             {
-                stateToUpdate.Layout.ExpandedFolders.Add(normalizedSavePath);
-                _stateService.Save(stateToUpdate);
+                SidebarGroups.Clear();
+                return;
+            }
+
+            var state = _stateService.Load();
+            var selectedPath = (SelectedNode as FileItem)?.FullPath ?? state.Session.LastSelectedFile;
+
+            if (ViewMode == SidebarViewMode.Tree)
+            {
+                var expandedFolders = state.Layout.ExpandedFolders;
+
+                var rootFolder = await _navigationService.BuildTreeAsync(savePath, expandedFolders);
+                if (rootFolder == null)
+                {
+                    SidebarGroups.Clear();
+                    return;
+                }
+
+                AttachGroupExpandedEvents(rootFolder);
+
+                SidebarGroups.Clear();
+                SidebarGroups.Add(rootFolder);
+            }
+            else
+            {
+                var expandedCalendarGroups = state.Layout.ExpandedCalendarGroups;
+                var calendarYears = await _navigationService.BuildCalendarTreeAsync(savePath, expandedCalendarGroups, Constants.CalendarWeekLabel);
+
+                SidebarGroups.Clear();
+
+                foreach (var yearGroup in calendarYears)
+                {
+                    AttachGroupExpandedEvents(yearGroup);
+                    SidebarGroups.Add(yearGroup);
+                }
+            }
+
+            if (!string.IsNullOrEmpty(selectedPath))
+            {
+                var nodeToSelect = _navigationService.FindNodeByPath(SidebarGroups, selectedPath);
+                if (nodeToSelect != null)
+                {
+                    if (expandAncestorsForSelected)
+                    {
+                        for (var current = nodeToSelect.Parent; current != null; current = current.Parent)
+                        {
+                            current.IsExpanded = true;
+                        }
+                    }
+                    SelectedNode = nodeToSelect;
+                }
             }
         }
-
-        var selectedPath = (SelectedNode as FileItem)?.FullPath ?? _stateService.Load().Session.LastSelectedFile;
-        if (!string.IsNullOrEmpty(selectedPath))
+        finally
         {
-            var nodeToSelect = _navigationService.FindNodeByPath(SidebarFolders, selectedPath);
-            if (nodeToSelect != null)
-            {
-                SelectedNode = nodeToSelect;
-            }
+            _isLoading = false;
         }
     }
 
     public NavigationItem? FindNodeByPath(string path)
     {
-        return _navigationService.FindNodeByPath(SidebarFolders, NavigationService.NormalizePath(path));
+        return _navigationService.FindNodeByPath(SidebarGroups, NavigationService.NormalizePath(path));
     }
 
-    private void AttachFolderExpandedEvents(FolderItem folder)
+    private void AttachGroupExpandedEvents(GroupItem group)
     {
-        folder.PropertyChanged += OnFolderExpandedChanged;
-        foreach (var item in folder.Items)
+        group.PropertyChanged += OnGroupExpandedChanged;
+        foreach (var item in group.Items)
         {
-            if (item is FolderItem subFolder)
+            if (item is GroupItem subGroup)
             {
-                AttachFolderExpandedEvents(subFolder);
+                AttachGroupExpandedEvents(subGroup);
             }
         }
     }
 
-    private void OnFolderExpandedChanged(object? sender, PropertyChangedEventArgs e)
+    private void OnGroupExpandedChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.PropertyName == nameof(NavigationItem.IsExpanded) && sender is FolderItem folder)
+        if (e.PropertyName == nameof(NavigationItem.IsExpanded) && sender is GroupItem group)
         {
             var state = _stateService.Load();
-            var normalizedPath = NavigationService.NormalizePath(folder.FullPath);
-            var exists = state.Layout.ExpandedFolders.Any(p => string.Equals(p, normalizedPath, StringComparison.OrdinalIgnoreCase));
-
-            if (folder.IsExpanded)
+            if (ViewMode == SidebarViewMode.Tree)
             {
-                if (!exists)
+                var normalizedPath = NavigationService.NormalizePath(group.FullPath);
+                var exists = state.Layout.ExpandedFolders.Any(p => string.Equals(p, normalizedPath, StringComparison.OrdinalIgnoreCase));
+
+                if (group.IsExpanded && !exists)
                 {
                     state.Layout.ExpandedFolders.Add(normalizedPath);
+                    _stateService.Save(state);
+                }
+                else if (!group.IsExpanded && exists)
+                {
+                    state.Layout.ExpandedFolders.RemoveAll(p => string.Equals(p, normalizedPath, StringComparison.OrdinalIgnoreCase));
                     _stateService.Save(state);
                 }
             }
             else
             {
-                if (exists)
+                var uri = group.FullPath;
+                var exists = state.Layout.ExpandedCalendarGroups.Any(p => string.Equals(p, uri, StringComparison.OrdinalIgnoreCase));
+
+                if (group.IsExpanded && !exists)
                 {
-                    state.Layout.ExpandedFolders.RemoveAll(p => string.Equals(p, normalizedPath, StringComparison.OrdinalIgnoreCase));
+                    state.Layout.ExpandedCalendarGroups.Add(uri);
+                    _stateService.Save(state);
+                }
+                else if (!group.IsExpanded && exists)
+                {
+                    state.Layout.ExpandedCalendarGroups.RemoveAll(p => string.Equals(p, uri, StringComparison.OrdinalIgnoreCase));
                     _stateService.Save(state);
                 }
             }

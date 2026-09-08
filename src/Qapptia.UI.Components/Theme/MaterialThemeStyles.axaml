@@ -31,6 +31,14 @@
             <SolidColorBrush x:Key="M3SecondaryContainerBrush" Color="#A8D1FF" />
             <SolidColorBrush x:Key="M3OnSecondaryContainerBrush" Color="#002A5C" />
             
+            <!-- Variante de acento y estado seleccionado grisáceo -->
+            <SolidColorBrush x:Key="M3GrayBrush" Color="#6C757D" />
+            <SolidColorBrush x:Key="M3OnGrayBrush" Color="#FFFFFF" />
+            <SolidColorBrush x:Key="M3GrayContainerBrush" Color="#DEE2E6" />
+            <SolidColorBrush x:Key="M3OnGrayContainerBrush" Color="#111827" />
+            <SolidColorBrush x:Key="M3NeutralContainerBrush" Color="#DEE2E6" />
+            <SolidColorBrush x:Key="M3OnNeutralContainerBrush" Color="#111827" />
+            
             <!-- Interaccion y controles -->
             <SolidColorBrush x:Key="M3HoverBrush" Color="#E0EDFF" />
             <SolidColorBrush x:Key="M3ControlBgBrush" Color="#FFFFFF" />
@@ -62,6 +70,14 @@
             <SolidColorBrush x:Key="M3SecondaryContainerBrush" Color="#A8D1FF" />
             <SolidColorBrush x:Key="M3OnSecondaryContainerBrush" Color="#002A5C" />
             
+            <!-- Variante de acento y estado seleccionado grisáceo -->
+            <SolidColorBrush x:Key="M3GrayBrush" Color="#6C757D" />
+            <SolidColorBrush x:Key="M3OnGrayBrush" Color="#FFFFFF" />
+            <SolidColorBrush x:Key="M3GrayContainerBrush" Color="#DEE2E6" />
+            <SolidColorBrush x:Key="M3OnGrayContainerBrush" Color="#111827" />
+            <SolidColorBrush x:Key="M3NeutralContainerBrush" Color="#DEE2E6" />
+            <SolidColorBrush x:Key="M3OnNeutralContainerBrush" Color="#111827" />
+            
             <!-- Interaccion y controles -->
             <SolidColorBrush x:Key="M3HoverBrush" Color="#E0EDFF" />
             <SolidColorBrush x:Key="M3ControlBgBrush" Color="#FFFFFF" />
@@ -92,6 +108,14 @@
             <SolidColorBrush x:Key="M3OnPrimaryContainerBrush" Color="#C2E7FF" />
             <SolidColorBrush x:Key="M3SecondaryContainerBrush" Color="#004A77" />
             <SolidColorBrush x:Key="M3OnSecondaryContainerBrush" Color="#C2E7FF" />
+            
+            <!-- Variante de acento y estado seleccionado grisáceo -->
+            <SolidColorBrush x:Key="M3GrayBrush" Color="#9CA3AF" />
+            <SolidColorBrush x:Key="M3OnGrayBrush" Color="#121212" />
+            <SolidColorBrush x:Key="M3GrayContainerBrush" Color="#444850" />
+            <SolidColorBrush x:Key="M3OnGrayContainerBrush" Color="#FFFFFF" />
+            <SolidColorBrush x:Key="M3NeutralContainerBrush" Color="#444850" />
+            <SolidColorBrush x:Key="M3OnNeutralContainerBrush" Color="#FFFFFF" />
             
             <!-- Interaccion y controles -->
             <SolidColorBrush x:Key="M3HoverBrush" Color="#2D333B" />

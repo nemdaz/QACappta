@@ -8,8 +8,14 @@ public sealed class LayoutState
     [JsonPropertyName("sidebar_width")]
     public int SidebarWidth { get; set; } = 250;
 
+    [JsonPropertyName("sidebar_view_mode")]
+    public string SidebarViewMode { get; set; } = "Calendar";
+
     [JsonPropertyName("expanded_folders")]
     public List<string> ExpandedFolders { get; set; } = new();
+
+    [JsonPropertyName("expanded_calendar_groups")]
+    public List<string> ExpandedCalendarGroups { get; set; } = new();
 }
 
 public sealed class SessionState

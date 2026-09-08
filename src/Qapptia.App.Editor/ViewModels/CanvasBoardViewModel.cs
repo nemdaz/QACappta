@@ -94,7 +94,7 @@ public partial class CanvasBoardViewModel : ObservableObject, IDisposable
             var ms = new MemoryStream(fileBytes);
             var baseBitmap = new Bitmap(ms);
 
-            var (mediaId, _) = ImageMetadataService.EnsureImageMetadata(file.FullPath);
+            var (mediaId, _, _) = ImageMetadataService.GetImageMetadata(file.FullPath);
             CurrentImageId = mediaId;
 
             var canvasState = _canvasStateService.Load(file.FullPath, mediaId);

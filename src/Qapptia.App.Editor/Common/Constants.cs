@@ -28,4 +28,7 @@ public static class Constants
     // ToolTips de estado del Capturador
     public const string ToolTipCaptureActive = "Capturador activo en segundo plano";
     public const string ToolTipCaptureInactive = "Capturador inactivo (clic para iniciar)";
+
+    // Textos de navegación cronológica (Sidebar - Modo Calendario)
+    public const string CalendarWeekLabel = "Semana";
 }

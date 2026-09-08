@@ -193,7 +193,7 @@ public sealed class StateServicesTests : IDisposable
         var oldImagePath = Path.Combine(_testDir, "original_capture.png");
         await File.WriteAllBytesAsync(oldImagePath, new byte[] { 10, 20, 30 });
 
-        var (mediaId, mediaType) = await Qapptia.Core.Services.ImageMetadataService.EnsureImageMetadataAsync(oldImagePath);
+        var (mediaId, mediaType, _) = await Qapptia.Core.Services.ImageMetadataService.EnsureImageMetadataAsync(oldImagePath);
 
         var canvasState = new CanvasState
         {
@@ -233,7 +233,7 @@ public sealed class StateServicesTests : IDisposable
         var imagePath = Path.Combine(_testDir, "save_cleanup.png");
         await File.WriteAllBytesAsync(imagePath, new byte[] { 1, 2, 3 });
 
-        var (mediaId, mediaType) = await Qapptia.Core.Services.ImageMetadataService.EnsureImageMetadataAsync(imagePath);
+        var (mediaId, mediaType, _) = await Qapptia.Core.Services.ImageMetadataService.EnsureImageMetadataAsync(imagePath);
 
         // Guardar estado inicial
         var state = new CanvasState

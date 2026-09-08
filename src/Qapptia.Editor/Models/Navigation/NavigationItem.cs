@@ -11,6 +11,7 @@ public abstract partial class NavigationItem : ObservableObject
     public string Name { get; set; } = string.Empty;
     public string FullPath { get; set; } = string.Empty;
     public DateTime EffectiveDateUtc { get; set; } = DateTime.MinValue;
+    public GroupItem? Parent { get; set; }
 
     [ObservableProperty]
     private bool _isExpanded;

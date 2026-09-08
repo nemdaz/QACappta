@@ -54,7 +54,7 @@ public sealed class CanvasStateService : ICanvasStateService
         // 2. Si no existe, obtener mediaId de la imagen si no fue provisto
         if (string.IsNullOrEmpty(mediaId))
         {
-            var (extractedId, _) = Qapptia.Core.Services.ImageMetadataService.GetImageMetadata(imagePath);
+            var (extractedId, _, _) = Qapptia.Core.Services.ImageMetadataService.GetImageMetadata(imagePath);
             mediaId = extractedId;
         }
 
