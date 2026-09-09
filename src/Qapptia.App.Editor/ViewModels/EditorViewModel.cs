@@ -125,13 +125,17 @@ public partial class EditorViewModel : ObservableObject, IDisposable
         Board = new CanvasBoardViewModel(canvasService, stateService);
 
         Sidebar.ToastRequested += (msg, type) => ShowToast(msg, type);
+        Board.ImageLoadFailed += (s, path) => ShowToast(Constants.ToastFileCorrupted, NotificationType.Error);
 
         // Coordinación de eventos entre Sub-ViewModels
         Sidebar.FileSelected += (s, file) =>
         {
             if (file != null)
             {
-                Board.LoadImage(file);
+                if (!string.Equals(file.FullPath, Board.CurrentImagePath, StringComparison.OrdinalIgnoreCase))
+                {
+                    Board.LoadImage(file);
+                }
             }
             else
             {

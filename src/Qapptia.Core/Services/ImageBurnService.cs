@@ -49,12 +49,13 @@ public static class ImageBurnService
     /// </summary>
     public static async Task SaveBurnedImageAsync(string filePath, byte[] pngBytes, string? mediaId, string? mediaType = null)
     {
-        await File.WriteAllBytesAsync(filePath, pngBytes);
-
+        byte[] finalBytes = pngBytes;
         if (!string.IsNullOrEmpty(mediaId))
         {
             string resolvedType = mediaType ?? Constants.ResolveMediaType(filePath);
-            await ImageMetadataService.AppendMediaMetadataAsync(filePath, mediaId, resolvedType);
+            finalBytes = ImageMetadataService.InjectMetadata(pngBytes, mediaId, resolvedType);
         }
+
+        await File.WriteAllBytesAsync(filePath, finalBytes);
     }
 }

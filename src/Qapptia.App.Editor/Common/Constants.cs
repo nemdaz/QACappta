@@ -17,6 +17,7 @@ public static class Constants
     public const string ToastConfigNotFound = "No se encontró la aplicación de configuración.";
     public const string ToastConfigError = "Error al abrir configuración.";
     public const string ToastFileNotFound = "El archivo no se encuentra en el disco.";
+    public const string ToastFileCorrupted = "El archivo está dañado o no es una imagen válida.";
     public const string ToastOpenFileError = "No se pudo abrir el archivo con la aplicación del sistema.";
     public const string ToastFolderNotFound = "La ubicación del archivo no existe.";
     public const string ToastShowInFolderError = "No se pudo abrir el explorador de archivos.";

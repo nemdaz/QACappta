@@ -1,18 +1,34 @@
 using System;
-using System.Globalization;
 using System.IO;
-using System.Text;
 using System.Threading.Tasks;
 
 namespace Qapptia.Core.Services;
 
 /// <summary>
-/// Servicio responsable de la inyección y extracción de metadatos estandarizados (MediaId, MediaType y CreatedAt) al final de los archivos de imagen.
+/// Servicio responsable de la inyección y extracción agnóstica de metadatos estandarizados XMP (ISO 16684-1).
 /// </summary>
 public static class ImageMetadataService
 {
+    private static readonly IFormatMetadataHandler[] s_handlers =
+    {
+        new PngMetadataHandler(),
+        new JpegMetadataHandler()
+    };
+
+    private static IFormatMetadataHandler? ResolveHandler(ReadOnlySpan<byte> header)
+    {
+        foreach (var handler in s_handlers)
+        {
+            if (handler.CanHandle(header))
+            {
+                return handler;
+            }
+        }
+        return null;
+    }
+
     /// <summary>
-    /// Obtiene sincrónicamente los metadatos de la imagen verificando el final del archivo. Si no existen, genera un nuevo ID, los anexa y los retorna.
+    /// Obtiene sincrónicamente los metadatos de la imagen. Si no existen, genera un nuevo ID, los inyecta y los retorna.
     /// </summary>
     public static (string MediaId, string MediaType, DateTime CreatedAt) EnsureImageMetadata(string filePath, string? mediaType = null, DateTime? createdAt = null)
     {
@@ -26,12 +42,12 @@ public static class ImageMetadataService
         string newId = Guid.NewGuid().ToString();
         string resolvedType = mediaType ?? Constants.ResolveMediaType(filePath);
         DateTime resolvedDate = createdAt ?? GetFileCreationTimeUtc(filePath);
-        AppendMediaMetadata(filePath, newId, resolvedType, resolvedDate);
+        InjectMetadata(filePath, newId, resolvedType, resolvedDate);
         return (newId, resolvedType, resolvedDate);
     }
 
     /// <summary>
-    /// Obtiene asincrónicamente los metadatos de la imagen verificando el final del archivo. Si no existen, genera un nuevo ID, los anexa y los retorna.
+    /// Obtiene asincrónicamente los metadatos de la imagen. Si no existen, genera un nuevo ID, los inyecta y los retorna.
     /// </summary>
     public static async Task<(string MediaId, string MediaType, DateTime CreatedAt)> EnsureImageMetadataAsync(string filePath, string? mediaType = null, DateTime? createdAt = null)
     {
@@ -45,37 +61,40 @@ public static class ImageMetadataService
         string newId = Guid.NewGuid().ToString();
         string resolvedType = mediaType ?? Constants.ResolveMediaType(filePath);
         DateTime resolvedDate = createdAt ?? GetFileCreationTimeUtc(filePath);
-        await AppendMediaMetadataAsync(filePath, newId, resolvedType, resolvedDate);
+        await InjectMetadataAsync(filePath, newId, resolvedType, resolvedDate);
         return (newId, resolvedType, resolvedDate);
     }
 
-    private static readonly byte[] s_metadataPrefixBytes = Encoding.UTF8.GetBytes(Constants.MetadataBlockStart);
-
     /// <summary>
-    /// Lee sincrónicamente los últimos bytes del archivo para extraer el bloque de metadatos Qapptia.
+    /// Lee sincrónicamente los metadatos XMP de la imagen sin decodificar píxeles.
     /// </summary>
     public static (string? MediaId, string? MediaType, DateTime? CreatedAt) GetImageMetadata(string filePath)
     {
         try
         {
+            if (!File.Exists(filePath)) return (null, null, null);
+
             using var fs = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
-            if (fs.Length == 0) return (null, null, null);
+            if (fs.Length < 4) return (null, null, null);
 
-            int bytesToRead = (int)Math.Min(Constants.MetadataBufferSize, fs.Length);
-            fs.Seek(-bytesToRead, SeekOrigin.End);
+            Span<byte> header = stackalloc byte[8];
+            int read = fs.Read(header);
+            fs.Position = 0;
 
-            var buffer = new byte[bytesToRead];
-            int bytesRead = fs.Read(buffer, 0, bytesToRead);
-            if (bytesRead == 0 || buffer.AsSpan(0, bytesRead).IndexOf(s_metadataPrefixBytes) < 0)
-                return (null, null, null);
+            var handler = ResolveHandler(header[..read]);
+            if (handler == null) return (null, null, null);
 
-            string content = Encoding.UTF8.GetString(buffer, 0, bytesRead);
-            string? mediaId = ExtractTagValue(content, Constants.MetadataMediaIdStart, Constants.MetadataMediaIdEnd);
-            string? mediaType = ExtractTagValue(content, Constants.MetadataMediaTypeStart, Constants.MetadataMediaTypeEnd);
-            string? createdAtStr = ExtractTagValue(content, Constants.MetadataCreatedAtStart, Constants.MetadataCreatedAtEnd);
+            string? xmpXml = handler.ReadXmp(fs);
+            if (!string.IsNullOrEmpty(xmpXml))
+            {
+                var (mediaId, mediaType, createdAt) = XmpMetadataHelper.ParseXmpPacket(xmpXml);
+                if (!string.IsNullOrEmpty(mediaId))
+                {
+                    return (mediaId, mediaType ?? Constants.ResolveMediaType(filePath), createdAt);
+                }
+            }
 
-            DateTime? createdAt = ParseDateTime(createdAtStr);
-            return (mediaId, mediaType, createdAt);
+            return (null, null, null);
         }
         catch
         {
@@ -84,41 +103,17 @@ public static class ImageMetadataService
     }
 
     /// <summary>
-    /// Lee asincrónicamente los últimos bytes del archivo para extraer el bloque de metadatos Qapptia.
+    /// Lee asincrónicamente los metadatos XMP de la imagen sin decodificar píxeles.
     /// </summary>
     public static async Task<(string? MediaId, string? MediaType, DateTime? CreatedAt)> GetImageMetadataAsync(string filePath)
     {
-        try
-        {
-            using var fs = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
-            if (fs.Length == 0) return (null, null, null);
-
-            int bytesToRead = (int)Math.Min(Constants.MetadataBufferSize, fs.Length);
-            fs.Seek(-bytesToRead, SeekOrigin.End);
-
-            var buffer = new byte[bytesToRead];
-            int bytesRead = await fs.ReadAsync(buffer.AsMemory(0, bytesToRead));
-            if (bytesRead == 0 || buffer.AsSpan(0, bytesRead).IndexOf(s_metadataPrefixBytes) < 0)
-                return (null, null, null);
-
-            string content = Encoding.UTF8.GetString(buffer, 0, bytesRead);
-            string? mediaId = ExtractTagValue(content, Constants.MetadataMediaIdStart, Constants.MetadataMediaIdEnd);
-            string? mediaType = ExtractTagValue(content, Constants.MetadataMediaTypeStart, Constants.MetadataMediaTypeEnd);
-            string? createdAtStr = ExtractTagValue(content, Constants.MetadataCreatedAtStart, Constants.MetadataCreatedAtEnd);
-
-            DateTime? createdAt = ParseDateTime(createdAtStr);
-            return (mediaId, mediaType, createdAt);
-        }
-        catch
-        {
-            return (null, null, null);
-        }
+        return await Task.Run(() => GetImageMetadata(filePath));
     }
 
     /// <summary>
-    /// Anexa sincrónicamente el bloque de metadatos estandarizado al final del archivo de imagen.
+    /// Inyecta sincrónicamente los metadatos XMP en la imagen de forma atómica mediante el handler de formato correspondiente.
     /// </summary>
-    public static void AppendMediaMetadata(string filePath, string mediaId, string mediaType, DateTime? createdAt = null)
+    public static void InjectMetadata(string filePath, string mediaId, string mediaType, DateTime? createdAt = null)
     {
         if (!File.Exists(filePath) || string.IsNullOrEmpty(mediaId) || string.IsNullOrEmpty(mediaType)) return;
 
@@ -126,71 +121,75 @@ public static class ImageMetadataService
         {
             var originalCreation = File.GetCreationTimeUtc(filePath);
             var originalWrite = File.GetLastWriteTimeUtc(filePath);
+            DateTime resolvedDate = createdAt ?? originalCreation;
 
-            using (var fs = new FileStream(filePath, FileMode.Append, FileAccess.Write, FileShare.Read))
+            string xmpPayload = XmpMetadataHelper.BuildXmpPacket(mediaId, mediaType, resolvedDate);
+            string tempFilePath = $"{filePath}.tmp.{Guid.NewGuid():N}";
+
+            bool injected = false;
+
+            using (var src = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
+            using (var dst = new FileStream(tempFilePath, FileMode.Create, FileAccess.Write, FileShare.None))
             {
-                string payload = BuildPayload(mediaId, mediaType, createdAt ?? DateTime.UtcNow);
-                var bytes = Encoding.UTF8.GetBytes(payload);
-                fs.Write(bytes);
+                Span<byte> header = stackalloc byte[8];
+                int read = src.Read(header);
+                src.Position = 0;
+
+                var handler = ResolveHandler(header[..read]);
+                if (handler != null)
+                {
+                    handler.InjectXmp(src, dst, xmpPayload);
+                    injected = true;
+                }
             }
 
-            File.SetCreationTimeUtc(filePath, originalCreation);
-            File.SetLastWriteTimeUtc(filePath, originalWrite);
+            if (injected)
+            {
+                File.Move(tempFilePath, filePath, overwrite: true);
+                File.SetCreationTimeUtc(filePath, originalCreation);
+                File.SetLastWriteTimeUtc(filePath, originalWrite);
+            }
+            else if (File.Exists(tempFilePath))
+            {
+                File.Delete(tempFilePath);
+            }
         }
         catch
         {
-            // Fallar silenciosamente si no hay permisos de escritura
+            // Fallar de forma segura sin interrumpir la operación
         }
     }
 
     /// <summary>
-    /// Anexa asincrónicamente el bloque de metadatos estandarizado al final del archivo de imagen.
+    /// Inyecta asincrónicamente los metadatos XMP en la imagen de forma atómica mediante el handler de formato correspondiente.
     /// </summary>
-    public static async Task AppendMediaMetadataAsync(string filePath, string mediaId, string mediaType, DateTime? createdAt = null)
+    public static async Task InjectMetadataAsync(string filePath, string mediaId, string mediaType, DateTime? createdAt = null)
     {
-        if (!File.Exists(filePath) || string.IsNullOrEmpty(mediaId) || string.IsNullOrEmpty(mediaType)) return;
+        await Task.Run(() => InjectMetadata(filePath, mediaId, mediaType, createdAt));
+    }
+
+    /// <summary>
+    /// Inyecta metadatos XMP directamente sobre un arreglo de bytes en memoria utilizando el handler adecuado.
+    /// </summary>
+    public static byte[] InjectMetadata(byte[] imageBytes, string mediaId, string mediaType, DateTime? createdAt = null)
+    {
+        if (imageBytes == null || imageBytes.Length < 4) return imageBytes ?? Array.Empty<byte>();
 
         try
         {
-            var originalCreation = File.GetCreationTimeUtc(filePath);
-            var originalWrite = File.GetLastWriteTimeUtc(filePath);
-
-            using (var fs = new FileStream(filePath, FileMode.Append, FileAccess.Write, FileShare.Read))
+            var handler = ResolveHandler(imageBytes.AsSpan(0, Math.Min(imageBytes.Length, 8)));
+            if (handler != null)
             {
-                string payload = BuildPayload(mediaId, mediaType, createdAt ?? DateTime.UtcNow);
-                var bytes = Encoding.UTF8.GetBytes(payload);
-                await fs.WriteAsync(bytes.AsMemory());
+                string xmpPayload = XmpMetadataHelper.BuildXmpPacket(mediaId, mediaType, createdAt ?? DateTime.UtcNow);
+                return handler.InjectXmp(imageBytes, xmpPayload);
             }
-
-            File.SetCreationTimeUtc(filePath, originalCreation);
-            File.SetLastWriteTimeUtc(filePath, originalWrite);
         }
         catch
         {
-            // Fallar silenciosamente si no hay permisos de escritura
+            // Retornar buffer original en caso de error
         }
-    }
 
-    private static string BuildPayload(string mediaId, string mediaType, DateTime createdAt)
-    {
-        string dateStr = createdAt.ToUniversalTime().ToString("O", CultureInfo.InvariantCulture);
-        return $"{Constants.MetadataBlockStart}" +
-               $"{Constants.MetadataMediaIdStart}{mediaId}{Constants.MetadataMediaIdEnd}" +
-               $"{Constants.MetadataMediaTypeStart}{mediaType}{Constants.MetadataMediaTypeEnd}" +
-               $"{Constants.MetadataCreatedAtStart}{dateStr}{Constants.MetadataCreatedAtEnd}" +
-               $"{Constants.MetadataBlockEnd}";
-    }
-
-    private static DateTime? ParseDateTime(string? value)
-    {
-        if (string.IsNullOrWhiteSpace(value)) return null;
-
-        if (DateTime.TryParseExact(value, "O", CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var parsedDt) ||
-            DateTime.TryParse(value, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out parsedDt))
-        {
-            return parsedDt.ToUniversalTime();
-        }
-        return null;
+        return imageBytes;
     }
 
     /// <summary>
@@ -221,17 +220,5 @@ public static class ImageMetadataService
         {
             return DateTime.UtcNow;
         }
-    }
-
-    private static string? ExtractTagValue(string content, string startTag, string endTag)
-    {
-        int startIndex = content.LastIndexOf(startTag, StringComparison.Ordinal);
-        if (startIndex < 0) return null;
-
-        int valueStart = startIndex + startTag.Length;
-        int endIndex = content.IndexOf(endTag, valueStart, StringComparison.Ordinal);
-        if (endIndex <= valueStart) return null;
-
-        return content[valueStart..endIndex];
     }
 }

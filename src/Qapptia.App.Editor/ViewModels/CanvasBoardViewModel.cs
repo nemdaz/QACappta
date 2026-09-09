@@ -60,6 +60,7 @@ public partial class CanvasBoardViewModel : ObservableObject, IDisposable
     public string? CurrentImageId { get; private set; }
 
     public event EventHandler? ImageLoaded;
+    public event EventHandler<string>? ImageLoadFailed;
     public event EventHandler? RequestRedraw;
     public event EventHandler? TextInputFocusRequested;
 
@@ -145,6 +146,7 @@ public partial class CanvasBoardViewModel : ObservableObject, IDisposable
         catch
         {
             ClearImage();
+            ImageLoadFailed?.Invoke(this, file.FullPath);
         }
     }
 
@@ -174,7 +176,8 @@ public partial class CanvasBoardViewModel : ObservableObject, IDisposable
             Shapes = _canvasStateService.CreateDtos(Shapes.Select(s => s.Geometry))
         };
 
-        _canvasStateService.Save(state, _currentImagePath);
+        string imagePath = _currentImagePath;
+        System.Threading.Tasks.Task.Run(() => _canvasStateService.Save(state, imagePath));
     }
 
     partial void OnActiveCropRectChanged(Rect? value)

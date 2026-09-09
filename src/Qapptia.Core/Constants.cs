@@ -12,22 +12,21 @@ public static class Constants
     public const string ShortcutCopyFile = "Ctrl+F";
     public const string DrawingExtension = ".dibujo";
     public static readonly string[] SupportedImageExtensions = { ".png", ".jpg", ".jpeg" };
-    public const string MetadataBlockStart = "<QapptiaMetadata>";
-    public const string MetadataBlockEnd = "</QapptiaMetadata>";
-    public const string MetadataMediaIdStart = "<Qapptia.mediaId>";
-    public const string MetadataMediaIdEnd = "</Qapptia.mediaId>";
-    public const string MetadataMediaTypeStart = "<Qapptia.mediaType>";
-    public const string MetadataMediaTypeEnd = "</Qapptia.mediaType>";
-    public const string MetadataCreatedAtStart = "<Qapptia.createdAt>";
-    public const string MetadataCreatedAtEnd = "</Qapptia.createdAt>";
+
+    // Propiedades de serialización JSON en archivos de estado (.dibujo)
     public const string MetadataPropertyMediaId = "Qapptia.mediaId";
     public const string MetadataPropertyMediaType = "Qapptia.mediaType";
-    public const string MetadataPropertyCreatedAt = "Qapptia.createdAt";
+
+    // Constantes de namespaces y cabeceras XMP (ISO 16684-1)
+    public const string XmpNamespaceMediaManagement = "http://ns.adobe.com/xap/1.0/mm/";
+    public const string XmpNamespaceDublinCore = "http://purl.org/dc/elements/1.1/";
+    public const string XmpNamespaceAdobeBasic = "http://ns.adobe.com/xap/1.0/";
+    public const string PngChunkXmpKeyword = "XML:com.adobe.xmp";
+    public const string JpegXmpHeader = "http://ns.adobe.com/xap/1.0/\0";
 
     // Constantes de persistencia y buffers de lectura rápida
     public const string JsonFileExtension = ".json";
     public const string JsonSearchPattern = "*.json";
-    public const int MetadataBufferSize = 512;
     public const int JsonHeaderBufferSize = 512;
 
     // Tipos MIME estándar (IANA / HTTP Content-Type)

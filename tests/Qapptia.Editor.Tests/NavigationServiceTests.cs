@@ -14,6 +14,13 @@ public sealed class NavigationServiceTests : IDisposable
     private readonly string _testDir;
     private readonly NavigationService _sut;
 
+    private static readonly byte[] s_minimalPng = new byte[]
+    {
+        0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A,
+        0x00, 0x00, 0x00, 0x0D, 0x49, 0x48, 0x44, 0x52, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x06, 0x00, 0x00, 0x00, 0x1F, 0x15, 0xC4, 0x89,
+        0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4E, 0x44, 0xAE, 0x42, 0x60, 0x82
+    };
+
     public NavigationServiceTests()
     {
         _testDir = Path.Combine(Path.GetTempPath(), "Qapptia_NavigationTests_" + Guid.NewGuid().ToString("N"));
@@ -231,8 +238,8 @@ public sealed class NavigationServiceTests : IDisposable
         var localDate = new DateTime(2026, 9, 7, 10, 30, 0, DateTimeKind.Local);
         var originalDateUtc = localDate.ToUniversalTime();
         var originalPath = Path.Combine(_testDir, "screenshot_initial.png");
-        File.WriteAllBytes(originalPath, new byte[] { 0x89, 0x50, 0x4E, 0x47 });
-        Qapptia.Core.Services.ImageMetadataService.AppendMediaMetadata(
+        File.WriteAllBytes(originalPath, s_minimalPng);
+        Qapptia.Core.Services.ImageMetadataService.InjectMetadata(
             originalPath,
             Guid.NewGuid().ToString("N"),
             "image/png",
@@ -372,6 +379,37 @@ public sealed class NavigationServiceTests : IDisposable
         tree.Should().NotBeNull();
         tree!.IsExpanded.Should().BeFalse();
     }
+
+    [Fact]
+    public async Task BuildTreeAndCalendarIgnoreFoldersWithHiddenPrefix()
+    {
+        // Arrange
+        var drawingDir = Path.Combine(_testDir, $"{Qapptia.Editor.Core.Constants.HiddenPrefixChar}dibujo");
+        Directory.CreateDirectory(drawingDir);
+        File.WriteAllBytes(Path.Combine(drawingDir, "meta.json"), new byte[] { 1 });
+        File.WriteAllBytes(Path.Combine(drawingDir, "ignored.png"), s_minimalPng);
+
+        var normalDir = Path.Combine(_testDir, "capturas");
+        Directory.CreateDirectory(normalDir);
+        var testFile = Path.Combine(normalDir, "test.png");
+        File.WriteAllBytes(testFile, s_minimalPng);
+
+        // Act
+        var tree = await _sut.BuildTreeAsync(_testDir, Array.Empty<string>());
+        var calendar = await _sut.BuildCalendarTreeAsync(_testDir, Array.Empty<string>());
+
+        // Assert
+        tree.Should().NotBeNull();
+        tree!.Items.OfType<FolderItem>().Should().ContainSingle(f => f.Name == "capturas");
+        tree.Items.OfType<FolderItem>().Should().NotContain(f => f.Name.StartsWith(Qapptia.Editor.Core.Constants.HiddenPrefixChar));
+
+        var foundIgnored = _sut.FindNodeByPath(calendar, Path.Combine(drawingDir, "ignored.png"));
+        foundIgnored.Should().BeNull();
+
+        var foundTest = _sut.FindNodeByPath(calendar, testFile);
+        foundTest.Should().NotBeNull();
+    }
 }
+
 
 

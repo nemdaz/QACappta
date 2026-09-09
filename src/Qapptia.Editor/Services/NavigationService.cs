@@ -5,6 +5,7 @@ using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Qapptia.Editor.Core;
 using Qapptia.Editor.Models.Navigation;
 using Serilog;
 
@@ -292,7 +293,7 @@ public sealed class NavigationService : INavigationService
             {
                 if ((subDir.Attributes & FileAttributes.Hidden) != 0 ||
                     (subDir.Attributes & FileAttributes.System) != 0 ||
-                    subDir.Name.StartsWith('.'))
+                    subDir.Name.StartsWith(Constants.HiddenPrefixChar))
                 {
                     continue;
                 }
@@ -313,7 +314,7 @@ public sealed class NavigationService : INavigationService
         {
             foreach (var subDir in dirInfo.EnumerateDirectories())
             {
-                if ((subDir.Attributes & FileAttributes.Hidden) != 0 || (subDir.Attributes & FileAttributes.System) != 0 || subDir.Name.StartsWith('.'))
+                if ((subDir.Attributes & FileAttributes.Hidden) != 0 || (subDir.Attributes & FileAttributes.System) != 0 || subDir.Name.StartsWith(Constants.HiddenPrefixChar))
                     continue;
 
                 var normalizedPath = NormalizePath(subDir.FullName);
@@ -399,13 +400,40 @@ public sealed class NavigationService : INavigationService
         return resolvedDate;
     }
 
+    private static bool IsNavigablePath(string fullPath)
+    {
+        if (string.IsNullOrWhiteSpace(fullPath)) return false;
+
+        string normalized = fullPath.Replace('\\', '/');
+        var segments = normalized.Split('/', StringSplitOptions.RemoveEmptyEntries);
+
+        // Cualquier directorio o archivo con prefijo interno u oculto queda fuera del dominio de navegación
+        foreach (var segment in segments)
+        {
+            if (segment.StartsWith(Constants.HiddenPrefixChar)) return false;
+        }
+
+        string ext = Path.GetExtension(fullPath);
+        if (!string.IsNullOrEmpty(ext))
+        {
+            return s_allowedExtensions.Contains(ext);
+        }
+
+        return true;
+    }
+
     private void OnFileSystemEvent(object sender, FileSystemEventArgs e)
     {
+        if (!IsNavigablePath(e.FullPath)) return;
+
         _effectiveDateCache.TryRemove(e.FullPath, out _);
         TriggerDebouncedChange();
     }
+
     private void OnFileSystemRenamed(object sender, RenamedEventArgs e)
     {
+        if (!IsNavigablePath(e.FullPath) && !IsNavigablePath(e.OldFullPath)) return;
+
         try
         {
             string oldExt = Path.GetExtension(e.OldFullPath);

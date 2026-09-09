@@ -13,6 +13,10 @@ public static class Constants
     public const double DrawMinDistance = 8.0;
     public const byte HighlighterAlpha = 102; // 40% opacity
 
+    // Navegación y sistema de archivos (filtros internos y ocultos)
+    public const char HiddenPrefixChar = '.';
+    public const string HiddenPrefix = ".";
+
     // Herramienta de recorte (Crop)
     public const double CropMinSize = 10.0; // Tamaño mínimo del rect de recorte (ancho/alto)
 
