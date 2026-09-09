@@ -17,4 +17,5 @@ public class GroupItem : NavigationItem
     public bool HasFiles => Items.Any(i => i is FileItem || (i is GroupItem g && g.HasFiles));
 
     public bool IsDimmed => Kind == GroupKind.Day && !HasFiles;
+    public bool IsToday { get; set; }
 }

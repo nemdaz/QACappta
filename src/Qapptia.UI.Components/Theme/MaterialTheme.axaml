@@ -101,4 +101,14 @@
         <Setter Property="BorderBrush" Value="{DynamicResource M3OutlineVariantBrush}" />
         <Setter Property="Foreground" Value="{DynamicResource M3OnSurfaceBrush}" />
     </Style>
+
+    <!-- Indicador de fecha actual (Today Badge) en explorador/calendario -->
+    <Style Selector="PathIcon.today-badge">
+        <Setter Property="Data" Value="{StaticResource IconToday}" />
+        <Setter Property="Width" Value="13" />
+        <Setter Property="Height" Value="13" />
+        <Setter Property="Foreground" Value="{DynamicResource M3PrimaryBrush}" />
+        <Setter Property="VerticalAlignment" Value="Center" />
+        <Setter Property="Margin" Value="4,0,0,0" />
+    </Style>
 </Styles>

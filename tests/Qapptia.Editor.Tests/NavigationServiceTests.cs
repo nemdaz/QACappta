@@ -409,6 +409,64 @@ public sealed class NavigationServiceTests : IDisposable
         var foundTest = _sut.FindNodeByPath(calendar, testFile);
         foundTest.Should().NotBeNull();
     }
+
+    [Fact]
+    public async Task BuildCalendarTreeAsyncMarksTodayOnYearMonthWeekAndDay()
+    {
+        // Arrange: fecha de referencia fijada en 2026-09-08 (martes, semana 37)
+        var referenceToday = new DateTime(2026, 9, 8, 12, 0, 0, DateTimeKind.Local);
+
+        // Crear una captura en la fecha actual y otra en una fecha del año anterior (2025-05-15)
+        var todayFile = Path.Combine(_testDir, "today_capture.png");
+        File.WriteAllBytes(todayFile, s_minimalPng);
+        File.SetCreationTimeUtc(todayFile, referenceToday.ToUniversalTime());
+        File.SetLastWriteTimeUtc(todayFile, referenceToday.ToUniversalTime());
+
+        var pastFile = Path.Combine(_testDir, "past_capture.png");
+        File.WriteAllBytes(pastFile, s_minimalPng);
+        var pastDate = new DateTime(2025, 5, 15, 10, 0, 0, DateTimeKind.Utc);
+        File.SetCreationTimeUtc(pastFile, pastDate);
+        File.SetLastWriteTimeUtc(pastFile, pastDate);
+
+        // Act
+        var calendar = await _sut.BuildCalendarTreeAsync(_testDir, Array.Empty<string>(), weekLabel: null, referenceToday: referenceToday);
+
+        // Assert: Nivel Año
+        var year2026 = calendar.OfType<CalendarGroupItem>().FirstOrDefault(y => y.Year == 2026);
+        var year2025 = calendar.OfType<CalendarGroupItem>().FirstOrDefault(y => y.Year == 2025);
+        year2026.Should().NotBeNull();
+        year2026!.IsToday.Should().BeTrue();
+        year2025.Should().NotBeNull();
+        year2025!.IsToday.Should().BeFalse();
+
+        // Nivel Mes
+        var sepMonth = year2026.Items.OfType<CalendarGroupItem>().FirstOrDefault(m => m.Month == 9);
+        var augMonth = year2026.Items.OfType<CalendarGroupItem>().FirstOrDefault(m => m.Month == 8);
+        sepMonth.Should().NotBeNull();
+        sepMonth!.IsToday.Should().BeTrue();
+        if (augMonth != null) augMonth.IsToday.Should().BeFalse();
+
+        // Nivel Semana (Semana 37 que contiene 2026-09-08)
+        var todayWeek = sepMonth.Items.OfType<CalendarGroupItem>().FirstOrDefault(w => w.IsToday);
+        todayWeek.Should().NotBeNull();
+        todayWeek!.WeekNumber.Should().Be(System.Globalization.ISOWeek.GetWeekOfYear(referenceToday));
+
+        var otherWeeks = sepMonth.Items.OfType<CalendarGroupItem>().Where(w => w != todayWeek).ToList();
+        otherWeeks.Should().AllSatisfy(w => w.IsToday.Should().BeFalse());
+
+        // Nivel Día (Día 08 de septiembre)
+        var todayDay = todayWeek.Items.OfType<CalendarGroupItem>().FirstOrDefault(d => d.IsToday);
+        todayDay.Should().NotBeNull();
+        todayDay!.Date?.Date.Should().Be(referenceToday.Date);
+
+        var otherDays = todayWeek.Items.OfType<CalendarGroupItem>().Where(d => d != todayDay).ToList();
+        otherDays.Should().AllSatisfy(d => d.IsToday.Should().BeFalse());
+
+        // Verificar que en el árbol de carpetas tradicional no se marque IsToday
+        var tree = await _sut.BuildTreeAsync(_testDir, Array.Empty<string>());
+        tree.Should().NotBeNull();
+        tree!.IsToday.Should().BeFalse();
+    }
 }
 
 

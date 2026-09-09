@@ -171,6 +171,10 @@
                                               Width="14" Height="14"
                                               Foreground="{DynamicResource M3OnSurfaceVariantBrush}"/>
                                     <TextBlock Text="{Binding Name}" Foreground="{DynamicResource M3OnSurfaceBrush}" FontWeight="SemiBold" FontSize="13" Padding="0,2" VerticalAlignment="Center" />
+                                    <!-- Indicador visual al final del texto para la fecha actual (hoy) -->
+                                    <PathIcon Classes="today-badge"
+                                              IsVisible="{Binding IsToday}"
+                                              ToolTip.Tip="Hoy" />
                                 </StackPanel>
                             </TreeDataTemplate>
                             <DataTemplate DataType="nav:FileItem">

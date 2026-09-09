@@ -54,7 +54,7 @@ public sealed class NavigationService : INavigationService
         }, ct).ConfigureAwait(false);
     }
 
-    public async Task<IReadOnlyList<GroupItem>> BuildCalendarTreeAsync(string rootPath, IReadOnlyList<string> expandedGroups, string? weekLabel = null, CancellationToken ct = default)
+    public async Task<IReadOnlyList<GroupItem>> BuildCalendarTreeAsync(string rootPath, IReadOnlyList<string> expandedGroups, string? weekLabel = null, DateTime? referenceToday = null, CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(rootPath) || !Directory.Exists(rootPath))
             return Array.Empty<GroupItem>();
@@ -66,8 +66,9 @@ public sealed class NavigationService : INavigationService
             CollectFilesRecursively(dirInfo, allFiles);
 
             var culture = new CultureInfo("es-ES");
-            var today = DateTime.Today;
+            var today = (referenceToday ?? DateTime.Today).Date;
             int currentYear = today.Year;
+            int currentMonth = today.Month;
 
             var filesByDate = allFiles
                 .GroupBy(f => f.EffectiveDateUtc.ToLocalTime().Date)
@@ -83,11 +84,13 @@ public sealed class NavigationService : INavigationService
 
             foreach (int year in targetYears)
             {
+                bool isTodayYear = (year == currentYear);
                 var yearGroup = new CalendarGroupItem(GroupKind.Year)
                 {
                     Name = year.ToString(CultureInfo.InvariantCulture),
                     FullPath = $"cal://{year}",
-                    Year = year
+                    Year = year,
+                    IsToday = isTodayYear
                 };
                 yearGroup.IsExpanded = expandedGroups.Any(p => string.Equals(p, yearGroup.FullPath, StringComparison.OrdinalIgnoreCase));
 
@@ -97,13 +100,15 @@ public sealed class NavigationService : INavigationService
                     string rawMonthName = culture.DateTimeFormat.GetMonthName(month);
                     string monthName = char.ToUpper(rawMonthName[0], culture) + rawMonthName[1..];
 
+                    bool isTodayMonth = (isTodayYear && month == currentMonth);
                     var monthGroup = new CalendarGroupItem(GroupKind.Month)
                     {
                         Name = monthName,
                         FullPath = $"cal://{year}/{month:D2}",
                         Year = year,
                         Month = month,
-                        Parent = yearGroup
+                        Parent = yearGroup,
+                        IsToday = isTodayMonth
                     };
                     monthGroup.IsExpanded = expandedGroups.Any(p => string.Equals(p, monthGroup.FullPath, StringComparison.OrdinalIgnoreCase));
 
@@ -128,6 +133,7 @@ public sealed class NavigationService : INavigationService
                         string endMmm = GetShortMonthName(culture, sunday.Month);
                         string resolvedWeekLabel = !string.IsNullOrWhiteSpace(weekLabel) ? weekLabel : "Semana";
 
+                        bool isTodayWeek = (isTodayYear && isTodayMonth && today >= monday && today <= sunday);
                         var weekGroup = new CalendarGroupItem(GroupKind.Week)
                         {
                             Name = $"{monday:dd} {startMmm} - {sunday:dd} {endMmm} ({resolvedWeekLabel} {weekNum})",
@@ -135,7 +141,8 @@ public sealed class NavigationService : INavigationService
                             Year = year,
                             Month = month,
                             WeekNumber = weekNum,
-                            Parent = monthGroup
+                            Parent = monthGroup,
+                            IsToday = isTodayWeek
                         };
                         weekGroup.IsExpanded = expandedGroups.Any(p => string.Equals(p, weekGroup.FullPath, StringComparison.OrdinalIgnoreCase));
 
@@ -147,6 +154,7 @@ public sealed class NavigationService : INavigationService
                             string dayName = rawDayName.ToLower(culture);
                             string dayMmm = GetShortMonthName(culture, day.Month);
 
+                            bool isTodayDay = (day == today);
                             var dayGroup = new CalendarGroupItem(GroupKind.Day)
                             {
                                 Name = $"{day:dd} {dayMmm}, {dayName}",
@@ -155,7 +163,8 @@ public sealed class NavigationService : INavigationService
                                 Month = month,
                                 WeekNumber = weekNum,
                                 Date = day,
-                                Parent = weekGroup
+                                Parent = weekGroup,
+                                IsToday = isTodayDay
                             };
                             dayGroup.IsExpanded = expandedGroups.Any(p => string.Equals(p, dayGroup.FullPath, StringComparison.OrdinalIgnoreCase));
 
